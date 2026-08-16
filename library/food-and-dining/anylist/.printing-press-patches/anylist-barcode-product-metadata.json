@@ -16,6 +16,8 @@
     "internal/cli/items_lookup.go",
     "internal/cli/items_update.go",
     "internal/cli/items_lookup_test.go",
+    "internal/cli/items_update_test.go",
+    "internal/cli/local_anylist.go",
     "internal/cli/collections_add.go",
     "internal/cli/helpers.go",
     "internal/cli/items_list.go",
