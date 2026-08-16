@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "id": "anylist-barcode-product-metadata",
+  "applied_at": "2026-08-15",
+  "base_run_id": "20260514-120439",
+  "base_printing_press_version": "4.6.1",
+  "summary": "feat(anylist): resolve barcodes and preserve structured product metadata",
+  "reason": "AnyList exposes a barcode-first product lookup endpoint and newer ListItem protobuf fields for UPC, package size, prices, and thumbnails. The generated CLI previously omitted them, forcing agents to guess product details or use the browser.",
+  "files": [
+    "internal/anylist/pb/api.proto",
+    "internal/anylist/pb/api.pb.go",
+    "internal/anylist/client.go",
+    "internal/anylist/client_test.go",
+    "internal/cli/items.go",
+    "internal/cli/items_add.go",
+    "internal/cli/items_lookup.go",
+    "internal/cli/items_update.go",
+    "internal/cli/items_lookup_test.go",
+    "go.mod",
+    "README.md",
+    "SKILL.md"
+  ],
+  "validated_outcome": "Barcode lookup returned a real AnyList protobuf product for UPC 049000028904, including canonical name, package size, UPC, and thumbnail URL; local CLI build and Go 1.26.6 vulnerability gate passed.",
+  "findings_addressed": ["F1", "F2", "F3", "F4", "F5", "F6"]
+}

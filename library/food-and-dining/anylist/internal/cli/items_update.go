@@ -17,11 +17,12 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 	var bodyQuantity string
 	var bodyNotes string
 	var bodyCategory string
+	var bodyBarcode string
 	var stdinBody bool
 
 	cmd := &cobra.Command{
 		Use:         "update",
-		Short:       "Update an existing item's quantity or notes",
+		Short:       "Update an existing item's quantity, notes, or barcode",
 		Example:     "  anylist-pp-cli items update --list example-resource",
 		Annotations: map[string]string{"pp:endpoint": "items.update", "pp:method": "POST", "pp:path": "/data/shopping-lists/update"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -35,6 +36,7 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 				bodyQuantity = stringFromBody(body, "quantity")
 				bodyNotes = stringFromBody(body, "notes")
 				bodyCategory = stringFromBody(body, "category")
+				bodyBarcode = stringFromBody(body, "barcode")
 			}
 			if !cmd.Flags().Changed("list") && bodyListName == "" && !flags.dryRun {
 				return fmt.Errorf("required flag \"list\" not set")
@@ -45,8 +47,8 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 			if bodyCategory != "" && !flags.dryRun {
 				return fmt.Errorf("category updates are not supported by the verified AnyList operation set; update quantity or notes instead")
 			}
-			if bodyQuantity == "" && bodyNotes == "" && !flags.dryRun {
-				return fmt.Errorf("nothing to update; set --quantity or --notes")
+			if bodyQuantity == "" && bodyNotes == "" && bodyBarcode == "" && !flags.dryRun {
+				return fmt.Errorf("nothing to update; set --quantity, --notes, or --barcode")
 			}
 			if dryRunOK(flags) {
 				return nil
@@ -77,6 +79,9 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 			if bodyNotes != "" {
 				updates["details"] = bodyNotes
 				expected["details"] = bodyNotes
+			}
+			if bodyBarcode != "" {
+				updates["product_upc"] = bodyBarcode
 			}
 
 			alClient := anylist.New(cfg)
@@ -113,6 +118,8 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().StringVar(&bodyQuantity, "quantity", "", "New quantity")
 	cmd.Flags().StringVar(&bodyNotes, "notes", "", "New notes")
 	cmd.Flags().StringVar(&bodyCategory, "category", "", "New category (currently unsupported by verified AnyList operations)")
+	cmd.Flags().StringVar(&bodyBarcode, "barcode", "", "New UPC/EAN barcode")
+	cmd.Flags().StringVar(&bodyBarcode, "upc", "", "Alias for --barcode")
 	cmd.Flags().BoolVar(&stdinBody, "stdin", false, "Read request body as JSON from stdin")
 
 	return cmd

@@ -140,6 +140,21 @@ type Store struct {
 	db *sql.DB
 }
 
+// ErrListNotFound identifies an expected cache miss when resolving a list by
+// name. Callers can handle that case without treating database errors as an
+// empty list.
+var ErrListNotFound = errors.New("list not found")
+
+type listNotFoundError struct {
+	name string
+}
+
+func (e listNotFoundError) Error() string {
+	return fmt.Sprintf("list %q not found — run 'anylist-pp-cli sync' first", e.name)
+}
+
+func (e listNotFoundError) Unwrap() error { return ErrListNotFound }
+
 // DB exposes the raw database connection.
 func (s *Store) DB() *sql.DB {
 	return s.db
@@ -757,7 +772,7 @@ func (s *Store) FindListByName(name string) (*ListRow, error) {
 			return &all[i], nil
 		}
 	}
-	return nil, fmt.Errorf("list %q not found — run 'anylist-pp-cli sync' first", name)
+	return nil, listNotFoundError{name: name}
 }
 
 // GetItems returns items for a list, optionally filtered by checked state.
@@ -840,7 +855,7 @@ func (s *Store) FindItemByID(listID, itemID string) (*ItemRow, error) {
 
 // SearchItems searches items across all lists using FTS5.
 func (s *Store) SearchItems(query string) ([]ItemSearchResult, error) {
-	ftsQuery := query + "*"
+	ftsQuery := ftsPrefixQuery(query)
 	sqlQuery := `
 		SELECT i.id, i.list_id, i.name, i.quantity, i.details, i.category, i.category_match_id,
 		       i.checked, i.manual_sort_index, i.store_ids, l.name as list_name
@@ -1081,7 +1096,7 @@ func (s *Store) SearchRecipesByIngredient(ingredient string) ([]RecipeIngredient
 
 // SearchRecipesByName searches recipes by name using FTS5.
 func (s *Store) SearchRecipesByName(query string) ([]RecipeRow, error) {
-	ftsQuery := query + "*"
+	ftsQuery := ftsPrefixQuery(query)
 	sqlQuery := `
 		SELECT r.id, r.name, r.note, r.source_name, r.source_url, r.rating, r.prep_time, r.cook_time,
 		       r.servings, r.timestamp, r.creation_timestamp
@@ -1095,6 +1110,23 @@ func (s *Store) SearchRecipesByName(query string) ([]RecipeRow, error) {
 	}
 	defer rows.Close()
 	return scanRecipes(rows)
+}
+
+// ftsPrefixQuery turns each whitespace-delimited search term into a quoted
+// FTS5 prefix phrase. Quoting keeps punctuation such as the hyphen in
+// "example-value" from being parsed as an operator or column name while
+// retaining prefix matching for every term.
+func ftsPrefixQuery(query string) string {
+	terms := strings.Fields(strings.TrimSpace(query))
+	if len(terms) == 0 {
+		return `""`
+	}
+	quoted := make([]string, len(terms))
+	for i, term := range terms {
+		term = strings.ReplaceAll(term, `"`, `""`)
+		quoted[i] = `"` + term + `"*`
+	}
+	return strings.Join(quoted, " AND ")
 }
 
 // FilterRecipes filters recipes by prep time, cook time, rating, servings, and collection.
