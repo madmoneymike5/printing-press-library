@@ -46,6 +46,41 @@ func TestGetListsByStoreMatchesStoreIDsExactly(t *testing.T) {
 	}
 }
 
+func TestSyncFromUserDataPersistsProductUpc(t *testing.T) {
+	t.Parallel()
+
+	st, err := Open(&config.Config{Path: filepath.Join(t.TempDir(), "config.toml")})
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer st.Close()
+
+	const barcode = "049000028904"
+	if err := st.SyncFromUserData(&pb.PBUserDataResponse{
+		ShoppingListsResponse: &pb.ShoppingListsResponse{
+			NewLists: []*pb.ShoppingList{
+				{
+					Identifier: "list-1",
+					Name:       "Groceries",
+					Items: []*pb.ListItem{
+						{Identifier: "item-1", ListId: "list-1", Name: "Cola", ProductUpc: barcode},
+					},
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SyncFromUserData returned error: %v", err)
+	}
+
+	item, err := st.FindItemByID("list-1", "item-1")
+	if err != nil {
+		t.Fatalf("FindItemByID returned error: %v", err)
+	}
+	if item.ProductUpc != barcode {
+		t.Fatalf("ProductUpc = %q, want %q", item.ProductUpc, barcode)
+	}
+}
+
 func TestSearchFTSPrefixQueriesQuotePunctuation(t *testing.T) {
 	t.Parallel()
 

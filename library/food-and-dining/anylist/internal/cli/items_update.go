@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/anylist"
+	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -82,6 +83,7 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 			}
 			if bodyBarcode != "" {
 				updates["product_upc"] = bodyBarcode
+				expected["product_upc"] = bodyBarcode
 			}
 
 			alClient := anylist.New(cfg)
@@ -95,11 +97,8 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("verifying update: %w", err)
 			}
-			if v, ok := expected["quantity"]; ok && updated.Quantity != v {
-				return fmt.Errorf("update verification failed: quantity is %q, expected %q", updated.Quantity, v)
-			}
-			if v, ok := expected["details"]; ok && updated.Details != v {
-				return fmt.Errorf("update verification failed: notes are %q, expected %q", updated.Details, v)
+			if err := verifyItemUpdate(updated, expected); err != nil {
+				return err
 			}
 
 			if flags.asJSON {
@@ -123,4 +122,17 @@ func newItemsUpdateCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&stdinBody, "stdin", false, "Read request body as JSON from stdin")
 
 	return cmd
+}
+
+func verifyItemUpdate(updated *store.ItemRow, expected map[string]string) error {
+	if v, ok := expected["quantity"]; ok && updated.Quantity != v {
+		return fmt.Errorf("update verification failed: quantity is %q, expected %q", updated.Quantity, v)
+	}
+	if v, ok := expected["details"]; ok && updated.Details != v {
+		return fmt.Errorf("update verification failed: notes are %q, expected %q", updated.Details, v)
+	}
+	if v, ok := expected["product_upc"]; ok && updated.ProductUpc != v {
+		return fmt.Errorf("update verification failed: barcode is %q, expected %q", updated.ProductUpc, v)
+	}
+	return nil
 }
