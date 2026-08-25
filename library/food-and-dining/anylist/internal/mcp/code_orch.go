@@ -83,7 +83,6 @@ var codeOrchReadOnlyEndpoints = map[string]bool{
 	"meal.summary":         true,
 	"recipes.filter":       true,
 	"recipes.ingredients":  true,
-	"recipes.link":         true,
 	"recipes.list":         true,
 	"recipes.missing":      true,
 	"recipes.scale":        true,

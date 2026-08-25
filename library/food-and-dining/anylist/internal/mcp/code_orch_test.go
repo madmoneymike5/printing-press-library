@@ -17,7 +17,9 @@ import (
 // /data/user-data/get data-fetch route.
 func codeOrchShapeIsReadOnly(ep *codeOrchEndpoint) bool {
 	if ep.Method == "GET" {
-		return true
+		// recipes.link is a local-cache command, not a remote endpoint;
+		// generic execute must not send its sentinel path through HTTP.
+		return ep.Path != "local-cache"
 	}
 	return ep.Method == "POST" && ep.Path == "/data/user-data/get"
 }
@@ -71,7 +73,7 @@ func TestCodeOrchExecuteRejectsMutationsBeforeClient(t *testing.T) {
 		"meal.add", "meal.update", "meal.delete",
 		"recipes.create", "recipes.delete", "recipes.batch-add",
 		"collections.add", "collections.delete",
-		"starters.remove", "favorites.add", "folders.update",
+		"starters.remove", "favorites.add", "folders.update", "recipes.link",
 	}
 	for _, id := range mutations {
 		res, err := handleCodeOrchExecute(context.Background(), codeOrchRequest("anylist_execute", map[string]any{"endpoint_id": id}))
