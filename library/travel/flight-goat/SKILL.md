@@ -29,7 +29,7 @@ This skill drives the `flight-goat-pp-cli` binary. **You must verify the CLI is 
 2. Verify: `flight-goat-pp-cli --version`
 3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
 
-If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.5 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.6 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/travel/flight-goat/cmd/flight-goat-pp-cli@latest
@@ -45,9 +45,10 @@ The headline commands hit consumer fare sources directly and need no credentials
 - `flight-goat-pp-cli dates <origin> <destination>` — cheapest-date scan across a travel window.
 - `flight-goat-pp-cli explore <airport>` / `flight-goat-pp-cli longhaul <airport>` — Kayak nonstop and long-haul route discovery.
 - `flight-goat-pp-cli soar <origin> <destination> <date>` — FlySoar (Duffel NDC/GDS) second price opinion with booking handoff.
+- `flight-goat-pp-cli award <origin> <destination>` — Seats.aero award (mileage) availability: miles + taxes redemption options across cabins. **Requires** `SEATS_AERO_API_KEY` (a Seats.aero Partner API key; cached search is Pro-eligible). Read-only.
 - `flight-goat-pp-cli assess` — delayed-flight/rebooking decision support.
 
-Booking deeplinks in each result's `booking_urls` quote the same `--currency` the search ran in.
+Booking deeplinks in each result's `booking_urls` quote the same `--currency` the search ran in. `award` is the exception: it quotes mileage/points, not cash, and does not produce booking deeplinks.
 
 ### Bulk fare probes: use --trip with --pace, never a shell loop
 

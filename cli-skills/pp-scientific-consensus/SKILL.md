@@ -34,7 +34,7 @@ This skill drives the `scientific-consensus-pp-cli` binary. **You must verify th
 2. Verify: `scientific-consensus-pp-cli --version`
 3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
 
-If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.4 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.6 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/other/scientific-consensus/cmd/scientific-consensus-pp-cli@latest
@@ -120,6 +120,40 @@ These capabilities aren't available in any other tool for this API.
   scientific-consensus funding "e-cigarette safety" --agent
   ```
 
+### Utilities
+- **`convert`** — Translate a DOI to a PMID or vice versa using the OpenAlex work index. Pass exactly one of `--doi` or `--pmid`; the other identifier is returned along with the title.
+
+  _Reach for this whenever an agent has one identifier type but needs the other (e.g. a citation tool wants a PMID, a DOI resolver gives you a DOI)._
+
+  ```bash
+  scientific-consensus convert --doi 10.1136/bmj.i6583 --agent
+  scientific-consensus convert --pmid 32939066 --agent
+  ```
+- **`batch`** — Run consensus analysis for multiple claims from one or more files (plain text, one claim per line, blank lines and `#` comments skipped). Accepts globs; duplicates are deduplicated. Returns a summary table or a flat JSON array, one item per claim.
+
+  _Reach for this when an agent must score many claims at once without shell-looping over `consensus`._
+
+  ```bash
+  scientific-consensus batch claims.txt --agent
+  scientific-consensus batch claims*.txt --limit 20 --json
+  ```
+- **`report`** — Export an analyzed works report for a topic as an Excel (`.xlsx`) workbook: a `Works` sheet (one row per study with title, first author, year, DOI, PMID, venue, design, stance, stance confidence, citations, open access) and a `Summary` sheet (query metadata plus stance/design aggregates). Uses the same design/stance engine as `consensus` and `evidence`. Unlike `export` (raw JSONL/JSON API dumps), `report` writes analyzed, spreadsheet-ready results.
+
+  _Reach for this when a researcher wants to hand off results to Excel, Google Sheets, or any spreadsheet-based screening workflow._
+
+  ```bash
+  scientific-consensus report "vitamin D respiratory infections" --output report.xlsx
+  scientific-consensus report "microplastics" -o mp.xlsx --claim "microplastics harm human health" --limit 100 --agent
+  ```
+- **`citations`** — Build a citation network around a seed work (by `--doi`, `--pmid`, or `--id`): the works citing it (`cited-by`), the works it references (`references`), or both. Bounded by `--depth` (max 2 hops) and `--max-nodes` (hard cap). `--json` returns flat `nodes` + `edges` arrays ready for a web graph renderer; the human default is a compact summary.
+
+  _Reach for this to trace influence, find high-impact neighbors, or feed a network-visualization tool._
+
+  ```bash
+  scientific-consensus citations --doi 10.1136/bmj.i6583 --agent
+  scientific-consensus citations --id W2741809807 --depth 2 --max-nodes 80 --direction cited-by --agent
+  ```
+
 ### Trends
 - **`emerging`** — Detect the fastest-growing research areas and exploding publication trends.
 
@@ -173,6 +207,24 @@ These capabilities aren't available in any other tool for this API.
 - `scientific-consensus-pp-cli works get` — Get a single work by OpenAlex ID, DOI, or PMID
 - `scientific-consensus-pp-cli works search` — Search scholarly works
 
+**convert** — DOI ↔ PMID identifier translation
+
+- `scientific-consensus-pp-cli convert --doi <doi>` — Look up the PMID (and title) for a DOI
+- `scientific-consensus-pp-cli convert --pmid <pmid>` — Look up the DOI (and title) for a PMID
+
+**batch** — Batch consensus over claim files
+
+- `scientific-consensus-pp-cli batch <file|glob> [...]` — Run consensus analysis for every claim in one or more files (blank lines and `# comments` skipped; globs and duplicate files are handled automatically)
+
+**report** — Excel report export
+
+- `scientific-consensus-pp-cli report <query> --output <file.xlsx>` — Export analyzed works (design + stance classified) as a two-sheet Excel workbook; `--claim` overrides the stance target, `--filter` narrows with an OpenAlex filter, `--limit` caps the works analyzed
+
+**citations** — Citation-network graph
+
+- `scientific-consensus-pp-cli citations --doi <doi>` — Build a citation graph from a DOI seed
+- `scientific-consensus-pp-cli citations --pmid <pmid>` — Build a citation graph from a PMID seed
+- `scientific-consensus-pp-cli citations --id <W...>` — Build a citation graph from an OpenAlex ID seed
 
 ### Finding the right command
 
@@ -226,9 +278,33 @@ scientific-consensus watch "GLP-1 cardiovascular outcomes" --agent
 
 Reports new publications since the last run from the local baseline.
 
+### Translate a DOI to PMID
+
+```bash
+scientific-consensus convert --doi 10.1136/bmj.i6583 --agent
+```
+
+Returns the PMID, DOI, and title from the OpenAlex work index. Use `--pmid` for the reverse direction.
+
+### Run consensus on a batch of claims
+
+```bash
+scientific-consensus batch claims.txt --limit 20 --agent
+```
+
+One claim per line; blank lines and `#` comments are skipped; globs and duplicate files are handled. Returns a verdict, consensus score, and evidence strength for each claim as a flat JSON array under `--json`.
+
+### Explore a paper's citation network
+
+```bash
+scientific-consensus citations --doi 10.1136/bmj.i6583 --depth 1 --max-nodes 50 --agent
+```
+
+Returns `nodes` (id, title, year, cited\_by\_count) and `edges` (from → to) bounded by `--max-nodes`. Use `--direction cited-by` for papers citing the seed, `references` for papers it cites, or `both` (default). `--depth 2` expands one additional hop.
+
 ## Auth Setup
 
-No API key required for any command. Optional env vars raise limits or enable AI summarization: NCBI_API_KEY (PubMed, higher rate limit), SEMANTIC_SCHOLAR_API_KEY (Semantic Scholar enrichment), and OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY (enhanced summarization). Everything works without them.
+No API key required for any command. Optional env vars raise limits or enable AI summarization: NCBI_API_KEY (PubMed, higher rate limit), SEMANTIC_SCHOLAR_API_KEY (Semantic Scholar enrichment), and ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY / GEMINI_API_KEY (enhanced summarization; first configured key wins — DeepSeek sits after Anthropic/OpenAI and before Gemini/Groq/Mistral; OpenAI-compatible providers sample at temperature 0). Everything works without them.
 
 Run `scientific-consensus-pp-cli doctor` to verify setup.
 
@@ -259,6 +335,8 @@ Commands that read from the local store or the API wrap output in a provenance e
 ```
 
 Parse `.results` for data and `.meta.source` to know whether it's live or local. A human-readable `N results (live)` summary is printed to stderr only when stdout is a terminal AND no machine-format flag (`--json`, `--csv`, `--compact`, `--quiet`, `--plain`, `--select`) is set — piped/agent consumers and explicit-format runs get pure JSON on stdout.
+
+Long-running analysis commands (`consensus`, `evidence`, `quality`, `reproducibility`, `watch`, `gaps`, `controversies`, `compare`, `batch`, `citations`) print a self-rewriting progress line to stderr while processing works. This is suppressed automatically under `--json`, `--agent`, `--compact`, `--csv`, `--quiet`, `--plain`, `--select`, and any non-TTY stderr, so it never appears in piped or agent contexts.
 
 ## Agent Feedback
 

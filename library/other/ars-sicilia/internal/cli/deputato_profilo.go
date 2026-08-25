@@ -28,17 +28,18 @@ func newNovelDeputatoProfiloCmd(flags *rootFlags) *cobra.Command {
 		Example: "  ars-sicilia-pp-cli deputato profilo \"Rossi Mario\" --legisl 18 --data 2024-01-01:2024-12-31 --json",
 		Annotations: map[string]string{
 			"mcp:read-only": "true",
+			"pp:happy-args": "nome=Abbate Ignazio;--legisl=18",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			if dryRunOK(flags) {
-				return nil
-			}
 			name := strings.TrimSpace(strings.Join(args, " "))
 			if name == "" {
 				return fmt.Errorf("nome del deputato richiesto (es. \"Rossi Mario\")")
+			}
+			if dryRunOK(flags) {
+				return emitDeputatoProfiloDryRun(cmd, name, flagLegisl, flagData)
 			}
 			return runDeputatoProfilo(cmd, flags, name, flagLegisl, flagData, flagLimit)
 		},
@@ -73,6 +74,64 @@ type profileReport struct {
 	Atti     []profileItem `json:"atti"`
 }
 
+// profiloSearchParams sono i parametri di una delle ricerche del profilo, in un
+// posto solo: il nome viaggia come `firmatario` sugli archivi degli atti e come
+// `testo` sui resoconti, dove l'oratore non e' un campo filtrabile. Anteprima e
+// ricerca vera devono partire dagli stessi, o la prima smette di descrivere la
+// seconda — e con sette archivi la deriva sarebbe anche difficile da vedere.
+func profiloSearchParams(campo, name string, legisl int, data string) map[string]string {
+	p := map[string]string{campo: name}
+	if legisl > 0 {
+		p["legisl"] = itoa(legisl)
+	}
+	if data != "" {
+		p["data"] = data
+	}
+	return p
+}
+
+// profiloFirmaArchives sono gli archivi in cui il deputato compare come
+// firmatario (campo FIRMAT). Condiviso con l'anteprima --dry-run, che deve
+// elencare le stesse richieste che il comando poi fa.
+var profiloFirmaArchives = []string{"ddl", "interrogazioni", "interpellanze", "mozioni", "odg", "risoluzioni"}
+
+// emitDeputatoProfiloDryRun elenca le richieste del profilo invece di uscire in
+// silenzio con exit 0. Il comando ne fa una per archivio, e l'anteprima serve
+// proprio a vedere che il nome viaggia in due modi diversi: come firmatario
+// (campo FIRMAT) sui sei archivi degli atti, e come testo libero sui resoconti,
+// dove l'oratore non è un campo. È la differenza che spiega perché lo stesso
+// nome renda su un archivio e non sull'altro.
+func emitDeputatoProfiloDryRun(cmd *cobra.Command, name string, legisl int, data string) error {
+	// runDeputatoProfilo passa da normalizeParams su ogni archivio: l'anteprima
+	// fa lo stesso, altrimenti annuncia una --data in formato diverso da quello
+	// che poi viaggia.
+	target := func(slug string, p map[string]string) (map[string]any, error) {
+		arc := icaro.BySlug(slug)
+		if arc == nil {
+			return nil, nil
+		}
+		return dryRunTargetBySlug(slug, normalizeParams(*arc, p))
+	}
+	requests := []map[string]any{}
+	for _, slug := range profiloFirmaArchives {
+		t, err := target(slug, profiloSearchParams("firmatario", name, legisl, data))
+		if err != nil {
+			return err
+		}
+		if t != nil {
+			requests = append(requests, t)
+		}
+	}
+	t, err := target("resoconti", profiloSearchParams("testo", name, legisl, data))
+	if err != nil {
+		return err
+	}
+	if t != nil {
+		requests = append(requests, t)
+	}
+	return emitDryRunRequests(cmd, requests, "una richiesta per archivio: il nome va come firmatario (FIRMAT) sugli archivi degli atti e come testo libero sui resoconti, dove l'oratore non è un campo filtrabile.")
+}
+
 func runDeputatoProfilo(cmd *cobra.Command, flags *rootFlags, name string, legisl int, data string, perArchive int) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -93,8 +152,7 @@ func runDeputatoProfilo(cmd *cobra.Command, flags *rootFlags, name string, legis
 	archivesContacted := 0
 
 	// Archivi con FIRMAT.
-	firmaArchives := []string{"ddl", "interrogazioni", "interpellanze", "mozioni", "odg", "risoluzioni"}
-	for _, slug := range firmaArchives {
+	for _, slug := range profiloFirmaArchives {
 		arc := icaro.BySlug(slug)
 		if arc == nil {
 			continue
@@ -103,13 +161,7 @@ func runDeputatoProfilo(cmd *cobra.Command, flags *rootFlags, name string, legis
 		if err != nil {
 			continue
 		}
-		params := map[string]string{"firmatario": name}
-		if legisl > 0 {
-			params["legisl"] = itoa(legisl)
-		}
-		if data != "" {
-			params["data"] = data
-		}
+		params := profiloSearchParams("firmatario", name, legisl, data)
 		var truncated bool
 		recs, err := c.Search(ctx, *arc, icaro.SearchOptions{
 			Params:    normalizeParams(*arc, params),
@@ -150,13 +202,7 @@ func runDeputatoProfilo(cmd *cobra.Command, flags *rootFlags, name string, legis
 		// Un errore di init non deve azzerare gli atti già raccolti sopra:
 		// si salta solo questo archivio.
 		if c, err := icaro.New(nil); err == nil {
-			params := map[string]string{"testo": name}
-			if legisl > 0 {
-				params["legisl"] = itoa(legisl)
-			}
-			if data != "" {
-				params["data"] = data
-			}
+			params := profiloSearchParams("testo", name, legisl, data)
 			var truncated bool
 			recs, err := c.Search(ctx, *arc, icaro.SearchOptions{
 				Params:    normalizeParams(*arc, params),
@@ -198,9 +244,13 @@ func runDeputatoProfilo(cmd *cobra.Command, flags *rootFlags, name string, legis
 		return notFoundErr(fmt.Errorf("nessun atto trovato per il deputato %q (verifica il nome e l'eventuale --legisl)", name))
 	}
 
-	// Sort by date (reverse chronological).
+	// Sort by date (reverse chronological). La chiave passa da chiaveData, non
+	// dalla stringa grezza: gli atti dei tre archivi serviti dal backend /bd/
+	// scrivono la data come `05/08/2026` e nel confronto lessicografico
+	// battevano le date già normalizzate ("28" > "20"), finendo in testa a atti
+	// più recenti.
 	sort.SliceStable(report.Atti, func(i, j int) bool {
-		return parseICaroDate(report.Atti[i].Data) > parseICaroDate(report.Atti[j].Data)
+		return chiaveData(report.Atti[i].Data) > chiaveData(report.Atti[j].Data)
 	})
 
 	out := cmd.OutOrStdout()

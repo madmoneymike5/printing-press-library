@@ -28,6 +28,10 @@ func TestNormDOI(t *testing.T) {
 		{"doi:10.2/XyZ", "10.2/xyz"},
 		{"  10.3/Foo  ", "10.3/foo"},
 		{"http://doi.org/10.4/bar", "10.4/bar"},
+		{"", ""},
+		{"10.5/Already", "10.5/already"},
+		{"DOI:10.6/UP", "10.6/up"},
+		{"  https://doi.org/10.7/MiXeD  ", "10.7/mixed"},
 	}
 	for _, tt := range tests {
 		if got := NormDOI(tt.in); got != tt.want {

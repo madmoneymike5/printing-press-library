@@ -29,7 +29,7 @@ This skill drives the `forkable-pp-cli` binary. **You must verify the CLI is ins
 2. Verify: `forkable-pp-cli --version`
 3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
 
-If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.5 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.6 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/food-and-dining/forkable/cmd/forkable-pp-cli@latest
@@ -150,13 +150,17 @@ These capabilities aren't available in any other tool for this API.
 
 - `forkable-pp-cli venue-usage` — Get per-venue usage keyed by venue id over a date range. Requires venue ids and from/to dates inlined in the query.
 
+**Stale default dates on `deliveries list` and `venue-usage`.** These two raw GraphQL passthrough commands ship a default `--query` with an example date baked directly into the query text. Running either with no flags can silently return an empty or misleading result (e.g. `deliveries list` with no overrides returns `{"count":0}` even when real deliveries exist) rather than an error. Always override the date argument with a real date — today's date for forward-looking reads, or a far-past date (e.g. `2000-01-01`, as `served-history`/`allowance-burn` already do internally) for full-history reads — before trusting a zero/empty result from either command. Other passthrough reads (`menus`, `meal-scores`) instead ship placeholder ids that need replacing — see each command's own entry above.
+
 **meal management (writes)** — place real orders and spend; **dry-run by default**, pass `--confirm` to apply.
 
-- `forkable-pp-cli meal set <deliveryId> --item <id> --menu <id> [--modifier <modifierId>:<optionId>] [--replace-piece <uuid>] [--note <text>] [--confirm]` — Override the auto-picked meal for one delivery day (`replacePiece`). `--replace-piece` takes the current piece's UUID (from `deliveries` or `served-history`).
+- `forkable-pp-cli meal set <deliveryId> --item <id> --menu <id> [--modifier <modifierId>:<optionId>] [--replace-piece <uuid>] [--note <text>] [--confirm]` — Override the auto-picked meal for one delivery day (`replacePiece`). `--replace-piece` takes the current piece's UUID (from `deliveries list`).
 - `forkable-pp-cli meal set-all --deliveries <id,id> --item <id> --menu <id> [--modifier <modifierId>:<optionId>] [--confirm]` — Apply one meal item across several delivery days (`replaceAllPieces`).
 - `forkable-pp-cli meal confirm <deliveryId> [--unconfirm] [--confirm]` — Confirm (or `--unconfirm`) a delivery day (`confirmDelivery`).
 - `forkable-pp-cli meal skip <deliveryId> [--confirm]` — Skip / cancel one or more delivery days (`removeDelivery`); `--deliveries <id,id>` skips several.
 - `forkable-pp-cli reorder <fromDate> --onto <deliveryId> [--replace-piece <uuid>] [--confirm]` — Repeat the meal you had on a past date onto an upcoming delivery day.
+
+**`--replace-piece` is effectively always required for `meal set` and `reorder`.** Forkable auto-selects a candidate meal for every delivery day before you ever touch it — in practice there is no delivery day with a genuinely empty slot, so omitting `--replace-piece` is a rare/theoretical path, not the default case. **Dry-run mode does not validate this.** A dry-run without `--replace-piece` renders a plausible-looking mutation preview and only fails at `--confirm` time, with a raw GraphQL error (`oldPieceId ... Expected value to not be null`). Before running `--confirm`, always look up the target delivery's current piece id via `deliveries list` (its `orders[].pieces[].id`) and pass it with `--replace-piece`. `meal set-all` has no `--replace-piece` flag — `replaceAllPieces` takes no old-piece id at all, so this caveat doesn't apply to it.
 
 **Required item options — `--modifier`.** An item with a required option group (e.g. "Choose Protein", `min: 1`) is rejected by Forkable unless you send a selection. Pass `--modifier <modifierId>:<optionId>[,<optionId>...]` (repeatable) — the CLI builds the `selectionsHash` (`{"16":[10]}`) the `replacePiece` mutation needs. Find modifier and option ids under each item's `modifiers` in the `menus` output. Example: `forkable-pp-cli meal set 12345 --item 678 --menu 90 --modifier 16:10 --replace-piece <uuid> --confirm`.
 

@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"io"
 	"strings"
 	"testing"
 
 	icaro "github.com/mvanhorn/printing-press-library/library/other/ars-sicilia/internal/icaroclient"
+	"github.com/spf13/cobra"
 )
 
 // TestParseFirmatariBlock_NoLabelLeak covers the labeled "Firmatari" block:
@@ -296,6 +298,249 @@ func TestSedutaDaAzione(t *testing.T) {
 		got, gotAula := sedutaDaAzione(c.in)
 		if got != c.want || gotAula != c.wantAula {
 			t.Errorf("sedutaDaAzione(%q) = (%d, %v), want (%d, %v)", c.in, got, gotAula, c.want, c.wantAula)
+		}
+	}
+}
+
+// Il nome della commissione la fonte lo scrive nel suffisso di seduta, che
+// indiceSeduta taglia via: senza leggerlo prima del taglio la sede resta il
+// ripiego del verbo — generica, col placeholder della fonte, vuota o col solo
+// codice interno.
+func TestSedeDaSuffissoSeduta(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Esaminato in commissione Seduta n. 184 0400 Commissione QUARTA", "Commissione QUARTA"},
+		{"Parere espresso Commissione * Seduta n. 68 0500 Commissione QUINTA", "Commissione QUINTA"},
+		{"Esitato per Aula (epa) Seduta n. 185 0100 Commissione PRIMA", "Commissione PRIMA"},
+		// La forma canonica vince sul nome d'uso: «Bilancio» resta in titolo.
+		{"Parere Commissione Bilancio Seduta n. 153 0200 Commissione SECONDA", "Commissione SECONDA"},
+		{`Abbinamento con ddl 49 Seduta"""""""""""""" n. 35 0400 Commissione QUARTA`, "Commissione QUARTA"},
+		// Seduta d'Aula: nessuna commissione da leggere.
+		{"Esaminato in Aula Seduta n. 267 AULA", ""},
+		// Qui il suffisso porta il marcatore AULA e la commissione sta solo nel
+		// verbo, come codice grezzo: se ne occupa risolviCodiceCommissione.
+		{"Rinviato Commissione 0400 Seduta n. 255 AULA", ""},
+		{"Assegnato per esame Commissione PRIMA", ""},
+		// Le commissioni speciali hanno nomi veri, non ordinali: una cattura di
+		// una sola parola li taglierebbe a metà (leg. XVII, ddl 66).
+		{"Esaminato in commissione Seduta n. 3 1200 Commissione riforma statuto", "Commissione riforma statuto"},
+		{"Esitato per Aula (epa) Seduta n. 29 1200 Commissione sp- eciale per lo Statuto della Regione", "Commissione sp- eciale per lo Statuto della Regione"},
+		// La parentesi annota l'evento, non la commissione: la sede finisce lì.
+		{"Esaminato in commissione Seduta n. 12 0100 Commissione PRIMA (Articolo 3 stralciato)", "Commissione PRIMA"},
+	}
+	for _, c := range cases {
+		if got := sedeDaSuffissoSeduta(c.in); got != c.want {
+			t.Errorf("sedeDaSuffissoSeduta(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestRisolviCodiceCommissione(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Commissione 0400", "Commissione QUARTA"},
+		{"Commissione 0100", "Commissione PRIMA"},
+		{"Commissione 0600", "Commissione SESTA"},
+		// Codici fuori dalle sei commissioni o non decimali: si lascia com'è,
+		// meglio il codice grezzo di un ordinale inventato.
+		{"Commissione 0700", "Commissione 0700"},
+		{"Commissione 0450", "Commissione 0450"},
+		{"Commissione QUARTA", "Commissione QUARTA"},
+		{"Commissione *", "Commissione *"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := risolviCodiceCommissione(c.in); got != c.want {
+			t.Errorf("risolviCodiceCommissione(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// Le run di virgolette del portale non sono contenuto: cadono sull'azione, non
+// sulla regione — una di esse spezza la data dentro il titolo di una legge
+// citata, e toglierla prima creerebbe un evento inesistente.
+func TestParseIterFromBody_RipuliceRunDiVirgolette(t *testing.T) {
+	body := `Attuale 24 lug 2019 Abbinamento con ddl 5; ddl"""""""""""""" 229; - VEDI ddl 587 Seduta"""""""""""""" n. 123 AULA ` +
+		`31 lug 2018 Esaminato in commissione Seduta n. 3 1200 Commissione riforma"""""""""""""" statuto (n. 66)`
+	ev := parseIterFromBody(body)
+	if len(ev) != 2 {
+		t.Fatalf("eventi = %d, want 2: %+v", len(ev), ev)
+	}
+	if strings.Contains(ev[0].Titolo, `"`) {
+		t.Errorf("titolo con virgolette residue: %q", ev[0].Titolo)
+	}
+	if ev[0].Seduta != 123 {
+		t.Errorf("seduta = %d, want 123 (la run stava dentro «Seduta»)", ev[0].Seduta)
+	}
+	if want := "Commissione riforma statuto"; ev[1].Sede != want {
+		t.Errorf("sede = %q, want %q", ev[1].Sede, want)
+	}
+}
+
+// La data dentro il titolo di una legge citata non e' un evento dell'iter: la
+// run di virgolette che la spezza va tolta dopo il taglio in eventi, non prima.
+func TestParseIterFromBody_DataNelTitoloCitatoNonEUnEvento(t *testing.T) {
+	body := `Attuale 12 mar 2025 Lr 12 marzo alr 2025 nlr 8 Titolo : * Modifiche alla legge regionale 31"""""""""""""" gennaio 2024, n. 3` +
+		`21 mar 2025 Pubblicazione Gurs n. 14 del 21 marzo 2025 (n. 738)`
+	ev := parseIterFromBody(body)
+	for _, e := range ev {
+		if strings.Contains(e.Data, "2024") {
+			t.Errorf("evento fantasma datato 2024: %+v", e)
+		}
+	}
+	if len(ev) == 0 || ev[0].Titolo != "Promulgata legge regionale n. 8/2025" {
+		t.Errorf("primo evento = %+v, want la promulgazione classificata", ev)
+	}
+}
+
+// La data che segue un «del» pendente chiude la frase dell'evento: tagliarla
+// perdeva la data di pubblicazione in Gurs, l'unica cosa che quell'evento
+// aggiunge alla promulgazione già registrata il giorno prima.
+func TestParseIterFromBody_DataGursRiattaccata(t *testing.T) {
+	body := "Attuale 19 feb 2026 Inviato Presidenza della Regione 24 feb 2026 Concluso " +
+		"24 feb 2026 Pubblicazione Gurs n. 10 del 24 febbraio 2026 (n. 73813)"
+	ev := parseIterFromBody(body)
+	if len(ev) != 3 {
+		t.Fatalf("eventi = %d, want 3: %+v", len(ev), ev)
+	}
+	if want := "Pubblicazione Gurs n. 10 del 24 febbraio 2026"; ev[2].Titolo != want {
+		t.Errorf("titolo = %q, want %q", ev[2].Titolo, want)
+	}
+}
+
+// Una data che segue una parola qualsiasi apre l'evento dopo, e non va
+// riattaccata: è il caso normale, ed è quello che regge tutta la cronologia.
+func TestParseIterFromBody_DataNonRiattaccataSenzaPreposizione(t *testing.T) {
+	body := "Attuale 06 ago 2020 Approvato dall'Assemblea Seduta n. 213 AULA " +
+		"12 ago 2020 Inviato Presidenza della Regione (n. 587)"
+	ev := parseIterFromBody(body)
+	if len(ev) != 2 {
+		t.Fatalf("eventi = %d, want 2: %+v", len(ev), ev)
+	}
+	if ev[1].Data != "12 ago 2020" {
+		t.Errorf("secondo evento datato %q, want «12 ago 2020»", ev[1].Data)
+	}
+}
+
+// Il titolo della legge, dentro l'annotazione «Lr … Titolo : …», cita le norme
+// modificate con le loro date: non sono eventi dell'iter, e prima finivano in
+// cima alla cronologia datate anni prima dell'atto.
+func TestParseIterFromBody_DataCitataNelTitoloNonEUnEvento(t *testing.T) {
+	body := "Attuale 26 mar 2025 Inviato Presidenza della Regione " +
+		"01 apr 2025 Lr 01 aprile alr 2025 nlr 10 Titolo : * Riconoscimento della legittimità dei debiti " +
+		"fuori bilancio ai sensi dell'articolo 73, comma 1, lettera e) del decreto legislativo 23 giugno 2011, " +
+		"n. 118 e successive modificazioni. D.F.B. 2023. Mesi di novembre e dicembre" +
+		"11 apr 2025 Pubblicazione Gurs n. 17 del 11 aprile 2025 (n. 700)"
+	ev := parseIterFromBody(body)
+	for _, e := range ev {
+		if strings.Contains(e.Data, "2011") {
+			t.Errorf("evento inesistente dalla norma citata: %+v", e)
+		}
+	}
+	if len(ev) != 3 {
+		t.Fatalf("eventi = %d, want 3: %+v", len(ev), ev)
+	}
+	// La finestra si chiude sulla prima data che non torna indietro: la
+	// pubblicazione in Gurs resta.
+	if want := "Pubblicazione Gurs n. 17 del 11 aprile 2025"; ev[2].Titolo != want {
+		t.Errorf("ultimo evento = %q, want %q", ev[2].Titolo, want)
+	}
+}
+
+// Gli eventi anteriori alla data di scheda di uno stralcio sono storia vera
+// dell'atto e non vanno toccati: nessuna annotazione Lr li precede.
+func TestParseIterFromBody_StoriaAnterioreDelloStralcioResta(t *testing.T) {
+	body := "Attuale 04 ago 2026 Inviato Presidenza della Regione Storico " +
+		"13 gen 2026 Assegnato per esame Commissione QUARTA " +
+		"27 gen 2026 Esaminato in commissione Seduta n. 184 0400 Commissione QUARTA (n. 6030)"
+	ev := parseIterFromBody(body)
+	if len(ev) != 3 {
+		t.Fatalf("eventi = %d, want 3: %+v", len(ev), ev)
+	}
+	if ev[1].Data != "13 gen 2026" {
+		t.Errorf("l'assegnazione del 13 gen è sparita: %+v", ev)
+	}
+}
+
+// Il verso inverso: una seduta ha una data sola, quindi lo stesso numero su due
+// date vuol dire che almeno una è sbagliata. È il caso reale del ddl 733 della
+// XVII (poi L.R. 9/2020), dove la seduta d'Aula 187 compare il 28 aprile e di
+// nuovo il 2 maggio 2020 — giorno in cui l'Aula non ha tenuto seduta alcuna.
+func TestSeduteConDateIncoerenti(t *testing.T) {
+	// L'elenco è quello vero dell'iter del ddl 733, ridotto alle righe che
+	// contano: le due d'Aula in conflitto, la 187 di COMMISSIONE del 20 aprile
+	// (numerazione indipendente, non deve entrare nel confronto) e la 198
+	// «Esitato per Aula», evento di fase aula che però cita una seduta di
+	// commissione.
+	evs := []iterEvent{
+		{Data: "20 apr 2020", Seduta: 187},
+		{Data: "26 apr 2020", Seduta: 198},
+		{Data: "27 apr 2020", Seduta: 186, sedutaAula: true},
+		{Data: "28 apr 2020", Seduta: 187, sedutaAula: true},
+		{Data: "02 mag 2020", Seduta: 187, sedutaAula: true},
+	}
+	got := seduteConDateIncoerenti(evs)
+	if !got[187] {
+		t.Error("stessa seduta d'Aula su due date: la seduta va segnalata")
+	}
+	if got[186] || got[198] {
+		t.Errorf("segnalate sedute coerenti: %v", got)
+	}
+	if len(got) != 1 {
+		t.Errorf("sedute segnalate = %v, want solo la 187", got)
+	}
+
+	// La marcatura tocca solo i due eventi d'Aula: la 187 di commissione resta
+	// pulita, e con lei la 198 di fase aula ma seduta di commissione.
+	cmd := &cobra.Command{}
+	cmd.SetErr(io.Discard)
+	_, avviso := marcaEventiIncoerenti(cmd, 17, evs)
+	if avviso == "" {
+		t.Fatal("iter incoerente: l'avviso non deve essere vuoto")
+	}
+	marcati := 0
+	for i, ev := range evs {
+		if ev.Anomalia {
+			marcati++
+			if !ev.sedutaAula || ev.Seduta != 187 {
+				t.Errorf("evento %d marcato a torto: %+v", i, ev)
+			}
+		}
+	}
+	if marcati != 2 {
+		t.Errorf("eventi marcati = %d, want 2 (le due righe d'Aula sulla seduta 187)", marcati)
+	}
+
+	// La stessa data scritta nelle due forme della fonte è la stessa data: un
+	// iter sano non va marcato solo perché il portale alterna i formati.
+	forme := []iterEvent{
+		{Data: "28 apr 2020", Seduta: 187, sedutaAula: true},
+		{Data: "28.04.20", Seduta: 187, sedutaAula: true},
+	}
+	if len(seduteConDateIncoerenti(forme)) != 0 {
+		t.Error("stessa data in due formati: nessuna incoerenza")
+	}
+}
+
+// Una cronologia sana non deve produrre né marcature né avviso: è la condizione
+// che rende il marcatore un segnale e non rumore di fondo.
+func TestMarcaEventiIncoerentiIterSano(t *testing.T) {
+	evs := []iterEvent{
+		{Data: "07 feb 2024", Seduta: 95, sedutaAula: true},
+		{Data: "20 mar 2024", Seduta: 101, sedutaAula: true},
+		{Data: "20 mar 2024", Seduta: 101, sedutaAula: true},
+		{Data: "21 mar 2024", Seduta: 44},
+	}
+	cmd := &cobra.Command{}
+	cmd.SetErr(io.Discard)
+	incoerenti, avviso := marcaEventiIncoerenti(cmd, 18, evs)
+	if avviso != "" {
+		t.Errorf("iter coerente: avviso = %q, want vuoto", avviso)
+	}
+	if len(incoerenti) != 0 {
+		t.Errorf("iter coerente: date incoerenti = %v", incoerenti)
+	}
+	for i, ev := range evs {
+		if ev.Anomalia {
+			t.Errorf("evento %d marcato in un iter coerente: %+v", i, ev)
 		}
 	}
 }

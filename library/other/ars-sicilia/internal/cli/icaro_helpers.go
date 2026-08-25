@@ -111,6 +111,9 @@ func runCerca(cmd *cobra.Command, flags *rootFlags, archiveSlug string, p cercaP
 		if invalido := new(icaro.InvalidParamError); errors.As(err, &invalido) {
 			return usageErr(err)
 		}
+		if h := restringiHint(err, arc.Slug, searchParams); h != "" {
+			fmt.Fprintln(os.Stderr, "hint: "+h)
+		}
 		return fmt.Errorf("ricerca %s: %w", arc.Slug, err)
 	}
 	if p.AggregaLeggi {
@@ -123,21 +126,25 @@ func runCerca(cmd *cobra.Command, flags *rootFlags, archiveSlug string, p cercaP
 		if p.LimitLeggi > 0 && len(leggi) > p.LimitLeggi {
 			leggi = leggi[:p.LimitLeggi]
 		}
-		// Si avvisa solo quando la finestra di righe si è esaurita PRIMA di
-		// raccogliere le leggi chieste: lì l'elenco è incompleto e non si vede.
-		// Se le leggi chieste sono arrivate tutte, il troncamento delle righe è
-		// il normale effetto del limite, non una risposta monca.
-		var hint string
-		if truncated && mancanti {
-			hint = fmt.Sprintf(
-				"lette %d righe-articolo e trovate solo %d delle %d leggi chieste: l'elenco può essere incompleto. Alza --limit, oppure restringi con --anno/--numero.",
-				len(recs), len(leggi), p.LimitLeggi)
-		}
+		// Due modi di restare corti, e vanno detti tutti e due.
+		//
+		// `mancanti`: la finestra di righe si è esaurita prima di raccogliere le
+		// leggi chieste — l'elenco è incompleto e non si vede.
+		//
+		// L'altro è il limite raggiunto: le leggi chieste sono arrivate tutte,
+		// e proprio per questo la paginazione si è fermata senza sapere quante
+		// altre ce ne fossero. Qui il ramo taceva e l'envelope dichiarava
+		// `troncato: false`, cioè affermava una completezza che nessuno aveva
+		// verificato: `leggi cerca --legisl 18 --anno 2026` rispondeva 10 leggi
+		// su 14 e diceva che erano tutte. Ogni altra ricerca di questa CLI in
+		// quel caso avvisa; questa era l'unica a non farlo, ed è il percorso
+		// naturale della domanda «quali leggi nell'anno X».
+		hint := hintLeggiCorte(truncated, mancanti, len(recs), len(leggi), p.LimitLeggi)
 		// Questo ramo ha un hint tutto suo e ritorna prima di warnTruncated:
 		// senza il caso esplicito, `leggi cerca --envelope` sarebbe l'unica
 		// ricerca a non avere la busta, e in silenzio.
 		if envelopeWanted(cmd.OutOrStdout(), flags) {
-			return emitEnvelope(cmd.OutOrStdout(), leggi, truncated && mancanti, hint, flags)
+			return emitEnvelope(cmd.OutOrStdout(), leggi, truncated, hint, flags)
 		}
 		if err := printJSONFiltered(cmd.OutOrStdout(), leggi, flags); err != nil {
 			return err
@@ -313,9 +320,9 @@ func titoloMatcha(titolo string, termini []string) bool {
 // mandare a cercare più in basso un atto che è già sotto gli occhi.
 //
 // Il rimedio suggerito dipende dall'archivio: `--frase` esiste solo sul flusso
-// Icaro, e sui tre serviti da /bd/ (resoconti, sommari, convocazioni) viene
-// rifiutato con un errore. Consigliarlo lì manderebbe in un vicolo cieco chi
-// segue l'avviso alla lettera, che è esattamente chi l'avviso deve aiutare.
+// Icaro, e sui tre serviti da /bd/ (resoconti, sommari, convocazioni) non è
+// nemmeno un flag. Consigliarlo lì manderebbe in un vicolo cieco chi segue
+// l'avviso alla lettera, che è esattamente chi l'avviso deve aiutare.
 func pertinenzaHint(recs []icaro.Record, termini []string, slug string) string {
 	if len(termini) == 0 || len(recs) == 0 {
 		return ""
@@ -491,6 +498,11 @@ func emitEnvelope(w io.Writer, payload any, troncato bool, hint string, flags *r
 	if err != nil {
 		return err
 	}
+	// La busta ha un percorso di uscita suo (writeJSON, non
+	// printOutputWithFlags), quindi l'iniezione di data_iso va rifatta qui:
+	// senza, le stesse righe avevano data_iso senza --envelope e non l'avevano
+	// con --envelope.
+	raw = iniettaDataISO(raw)
 	if flags.selectFields != "" {
 		warnUnknownSelectFields(raw, flags.selectFields)
 		raw = filterFields(raw, flags.selectFields)
@@ -520,6 +532,25 @@ func envelopeWanted(w io.Writer, flags *rootFlags) bool {
 
 // truncatedHint torna il testo dell'avviso, o "" quando non c'è nulla da dire.
 // Separato da warnTruncated per poterlo verificare senza catturare stderr.
+// hintLeggiCorte dice perché l'elenco aggregato può non essere tutto.
+//
+// Separato dal chiamante per poterlo verificare senza rete, come
+// truncatedHint. Torna "" quando non c'è nulla da dire.
+func hintLeggiCorte(truncated, mancanti bool, righe, leggi, limite int) string {
+	switch {
+	case !truncated:
+		return ""
+	case mancanti:
+		return fmt.Sprintf(
+			"lette %d righe-articolo e trovate solo %d delle %d leggi chieste: l'elenco può essere incompleto. Alza --limit, oppure restringi con --anno/--numero.",
+			righe, leggi, limite)
+	default:
+		return fmt.Sprintf(
+			"mostrate %d leggi, il massimo chiesto: l'archivio ne ha altre e la ricerca si è fermata qui. Alza --limit (es. --limit 50) prima di leggere questo elenco come completo.",
+			leggi)
+	}
+}
+
 func truncatedHint(truncated bool, shown int, slug string) string {
 	if !truncated {
 		return ""
@@ -610,6 +641,70 @@ func bdSchedaFallback(ctx context.Context, c *icaro.Client, arc icaro.Archive, p
 	return out, nil
 }
 
+// restringiHint suggerisce di stringere la ricerca quando il backend /bd/ non
+// consegna la risposta. Il portale tronca a metà le pagine grandi e consegna
+// intere quelle piccole — misurato il 2026-08-12 su `sommari`: la ricerca di una
+// singola seduta (24 KB) è arrivata 8 volte su 8, quella senza filtri (44 KB)
+// zero volte su 8. Quindi «riprova» da solo è un consiglio scadente: quello che
+// cambia davvero l'esito è chiedere meno righe. Il suggerimento esce solo se
+// c'è ancora un filtro da mettere: dirlo a chi ha già ristretto tutto sarebbe
+// dare la colpa all'utente di un guasto che non è suo.
+//
+// Per lo stesso motivo tace su UnresolvedFilterError: lì la ricerca non è caduta
+// per la dimensione della risposta ma perché il valore chiesto non esiste in
+// anagrafica, e restringere per numero o anno non farebbe comparire un oratore
+// che non c'è. L'hint uscirebbe sopra il messaggio d'errore vero, che è quello
+// che spiega cosa correggere.
+func restringiHint(err error, slug string, params map[string]string) string {
+	if !icaro.IsBDArchive(slug) {
+		return ""
+	}
+	if irrisolto := new(icaro.UnresolvedFilterError); errors.As(err, &irrisolto) {
+		return ""
+	}
+	var mancanti []string
+	for _, f := range bdFiltriStretti[slug] {
+		if strings.TrimSpace(params[f.chiave]) == "" && strings.TrimSpace(params[f.chiaveAlt]) == "" {
+			mancanti = append(mancanti, f.flag)
+		}
+	}
+	if len(mancanti) == 0 {
+		return ""
+	}
+	return "il portale tronca le risposte grandi e consegna intere quelle piccole: una ricerca più stretta ha molte più probabilità di riuscire. Aggiungi " +
+		strings.Join(mancanti, " o ") + " e riprova."
+}
+
+// bdFiltriStretti elenca, per archivio /bd/, i filtri che riducono davvero il
+// numero di righe, dal più selettivo al meno. Sono i campi del form del portale:
+// convocazioni non ha un numero di seduta (il suo form non lo espone), quindi
+// per quell'archivio si può solo suggerire l'anno e la commissione.
+var bdFiltriStretti = map[string][]struct{ chiave, chiaveAlt, flag string }{
+	"sommari":      {{"numero", "", "--numero"}, {"anno", "data", "--anno"}, {"commissione", "codcom", "--commissione"}},
+	"resoconti":    {{"numero", "", "--numero"}, {"anno", "data", "--anno"}},
+	"convocazioni": {{"anno", "data", "--anno"}, {"commissione", "codcom", "--commissione"}},
+}
+
+// getMissingErr traduce in errore l'esito di un `get` che non ha prodotto il
+// documento. Sono due fatti diversi e finivano nella stessa frase: «il record
+// non c'è» e «il backend non ha risposto». Il secondo travestito da primo è la
+// bugia peggiore che questa CLI possa dire — chi legge, giornalista o agente,
+// conclude che la seduta non è mai esistita, mentre il portale semplicemente
+// tronca le risposte a intermittenza e il tentativo dopo la restituisce.
+// bdErr nil significa che il backend ha risposto e non aveva il record.
+func getMissingErr(slug string, legisl, numero int, bdErr error) error {
+	if bdErr == nil {
+		return fmt.Errorf("nessun documento trovato per legisl=%d numero=%d in %s", legisl, numero, slug)
+	}
+	// Il 429 ha già il suo codice di uscita e la sua ricetta (attendere): non va
+	// confuso con un backend che cade, che invece si ritenta subito.
+	if rlErr := new(icaro.HTTPRateLimitError); errors.As(bdErr, &rlErr) {
+		return rateLimitErr(fmt.Errorf("backend /bd/ (%s): %w", slug, bdErr))
+	}
+	return fmt.Errorf("il backend /bd/ non ha risposto per legisl=%d numero=%d in %s: %w; "+
+		"non vuol dire che il documento non esista — riprova", legisl, numero, slug, bdErr)
+}
+
 // rejectPositionalArgs rifiuta gli argomenti posizionali sui comandi di ricerca,
 // che prendono ogni criterio da un flag. Senza, cobra li accetta e li scarta in
 // silenzio: `commissioni sommari cerca --commissione X` restituisce lo stesso
@@ -637,28 +732,11 @@ func runGetExtra(cmd *cobra.Command, flags *rootFlags, archiveSlug string, legis
 	if arc == nil {
 		return fmt.Errorf("unknown archive slug: %q", archiveSlug)
 	}
+	// I parametri si costruiscono PRIMA del ramo d'anteprima, cosi' l'anteprima
+	// descrive la ricerca che partirebbe davvero invece di comporne una propria.
+	params := getSearchParams(legisl, numero, extra)
 	if flags.dryRun || cliIsVerify() {
-		out := map[string]any{
-			"archive": arc.Slug,
-			"legisl":  legisl,
-			"numero":  numero,
-			"dry_run": true,
-			"would_fetch": fmt.Sprintf("%s/icaro/doc%s-1.jsp?icaDocId=N&legisl=%d&numero=%d",
-				icaro.DefaultBaseURL, arc.ID, legisl, numero),
-		}
-		return writeJSON(cmd.OutOrStdout(), out)
-	}
-	params := map[string]string{}
-	if legisl > 0 {
-		params["legisl"] = fmt.Sprintf("%d", legisl)
-	}
-	if numero > 0 {
-		params["numero"] = fmt.Sprintf("%d", numero)
-	}
-	for k, v := range extra {
-		if v = strings.TrimSpace(v); v != "" {
-			params[k] = v
-		}
+		return emitGetDryRun(cmd, *arc, legisl, numero, params)
 	}
 	c, err := icaro.New(nil)
 	if err != nil {
@@ -695,7 +773,8 @@ func runGetExtra(cmd *cobra.Command, flags *rootFlags, archiveSlug string, legis
 		// scheda con l'URL del PDF: è il testo integrale, che Icaro non dà
 		// nemmeno quando il record ce l'ha.
 		if icaro.IsBDArchive(arc.Slug) {
-			if out, err := bdSchedaFallback(ctx, c, *arc, params, legisl, numero); err == nil && out != nil {
+			out, bdErr := bdSchedaFallback(ctx, c, *arc, params, legisl, numero)
+			if bdErr == nil && out != nil {
 				// Anche su stderr, non solo nel campo `nota`: la ricetta
 				// documentata è `resoconti get ... --select pdf_url`, e --select
 				// il campo lo filtra via. L'avviso servirebbe a niente proprio
@@ -705,8 +784,9 @@ func runGetExtra(cmd *cobra.Command, flags *rootFlags, archiveSlug string, legis
 				}
 				return printJSONFiltered(cmd.OutOrStdout(), out, flags)
 			}
+			return getMissingErr(arc.Slug, legisl, numero, bdErr)
 		}
-		return fmt.Errorf("nessun documento trovato per legisl=%d numero=%d in %s", legisl, numero, arc.Slug)
+		return getMissingErr(arc.Slug, legisl, numero, nil)
 	}
 	doc, err := c.GetDoc(ctx, *arc, recs[0].DocID)
 	if err != nil {
@@ -751,18 +831,110 @@ func runGetExtra(cmd *cobra.Command, flags *rootFlags, archiveSlug string, legis
 		nota += fmt.Sprintf("; gli altri si vedono con `%s cerca --legisl %d --numero %d`.", arc.Slug, legisl, numero)
 		fmt.Fprintln(os.Stderr, "hint: "+nota)
 	}
-	if len(firm) > 0 || stralcio != nil || nota != "" {
-		return printJSONFiltered(cmd.OutOrStdout(), struct {
-			icaro.Doc
-			Firmatari []firmatario `json:"firmatari,omitempty"`
-			Stralcio  *stralcioOut `json:"stralcio,omitempty"`
-			Nota      string       `json:"nota,omitempty"`
-		}{doc, firm, stralcio, nota}, flags)
-	}
 	// printJSONFiltered (not the bare writeJSON) so --select/--compact/--csv
 	// behave the same as on generator-emitted commands — writeJSON always
 	// dumped the full payload regardless of --select.
-	return printJSONFiltered(cmd.OutOrStdout(), doc, flags)
+	return printJSONFiltered(cmd.OutOrStdout(), getOut{
+		Doc:       doc,
+		Legisl:    legisl,
+		Numero:    numero,
+		Data:      strings.TrimSpace(doc.Fields["Data"]),
+		Titolo:    titoloDoc(doc),
+		Fonte:     "icaro",
+		Firmatari: firm,
+		Stralcio:  stralcio,
+		Nota:      nota,
+	}, flags)
+}
+
+// getOut è la forma di `<archivio> get`, ed esiste per farne UNA sola.
+//
+// I tre archivi migrati a /bd/ hanno due percorsi: se l'indice Icaro il record
+// ce l'ha si risponde con la scheda Icaro, altrimenti con la scheda /bd/
+// (bdSchedaFallback). Le due uscite avevano forme diverse — la prima teneva
+// numero e data dentro `fields` (`fields.Numero`, `fields.Data`), la seconda in
+// radice — quindi lo stesso `--select numero,data_iso,titolo` rendeva sulla
+// seduta 268 e tornava `{}` sulla 147. Con exit 0: chi legge solo stdout
+// conclude che il documento non ha quei dati, o che non esiste.
+//
+// E il confine fra i due percorsi non è una proprietà del documento: è dove si
+// è fermato l'indice Icaro (il 2026-08-22, sui resoconti, alla seduta 232 del
+// 25.02.2026 — misurato: 232 annidata, 233 piatta). Si sposta quando il portale
+// aggiorna l'indice, quindi non è nemmeno una regola che si possa documentare:
+// la stessa seduta può cambiare forma da un giorno all'altro.
+//
+// Le coordinate stanno quindi in radice su entrambi i rami, con gli stessi nomi
+// e gli stessi tipi della scheda /bd/. `legisl` e `numero` vengono dagli
+// argomenti del comando, che sono interi e autorevoli, non da un campo di testo
+// da riparsare. `data` esce grezza come la scrive la fonte, così `data_iso` la
+// affianca il passaggio che lo fa già per tutti gli altri payload
+// (iniettaDataISO). `fields` resta dov'è: chi lo legge continua a funzionare,
+// perché questa è un'aggiunta, non uno spostamento.
+type getOut struct {
+	icaro.Doc
+	Legisl int    `json:"legisl,omitempty"`
+	Numero int    `json:"numero,omitempty"`
+	Data   string `json:"data,omitempty"`
+	Titolo string `json:"titolo,omitempty"`
+	// Fonte dice quale dei due percorsi ha risposto, come già faceva la scheda
+	// /bd/. Ora che la forma è una sola servirebbe a poco distinguere a occhio,
+	// e senza il marcatore non si distinguerebbe affatto: `body` presente o
+	// assente è un indizio, non una risposta.
+	Fonte     string       `json:"fonte,omitempty"`
+	Firmatari []firmatario `json:"firmatari,omitempty"`
+	Stralcio  *stralcioOut `json:"stralcio,omitempty"`
+	Nota      string       `json:"nota,omitempty"`
+}
+
+// titoloDoc sceglie il titolo dell'atto: la fonte lo mette nel titolo della
+// scheda su alcuni archivi e solo nel campo `Titolo` su altri — sui resoconti
+// la scheda ha titolo vuoto e il campo pieno («Ordine del giorno della seduta
+// successiva»), sui ddl è il contrario.
+func titoloDoc(doc icaro.Doc) string {
+	if t := strings.TrimSpace(doc.Title); t != "" {
+		return t
+	}
+	return strings.TrimSpace(doc.Fields["Titolo"])
+}
+
+// getSearchParams sono i parametri con cui `get` aggancia il documento, in un
+// posto solo: l'anteprima --dry-run e la ricerca vera devono partire dagli
+// stessi, o la prima smette di descrivere la seconda.
+func getSearchParams(legisl, numero int, extra map[string]string) map[string]string {
+	params := map[string]string{}
+	if legisl > 0 {
+		params["legisl"] = fmt.Sprintf("%d", legisl)
+	}
+	if numero > 0 {
+		params["numero"] = fmt.Sprintf("%d", numero)
+	}
+	for k, v := range extra {
+		if v = strings.TrimSpace(v); v != "" {
+			params[k] = v
+		}
+	}
+	return params
+}
+
+// emitGetDryRun mostra la ricerca che aggancia il documento.
+//
+// Prima stampava un URL composto a mano: `doc221-1.jsp?icaDocId=N&legisl=18&numero=1185`
+// — con una `N` letterale al posto dell'id, e due parametri che quell'URL non
+// porta. Non era una richiesta diversa da quella vera: non era una richiesta.
+// E taceva che `get` fa due passi, di cui il secondo dipende dal primo.
+func emitGetDryRun(cmd *cobra.Command, arc icaro.Archive, legisl, numero int, params map[string]string) error {
+	target, err := dryRunTargetBySlug(arc.Slug, normalizeParams(arc, params))
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("archivio %s non disponibile", arc.Slug)
+	}
+	nota := "aggancia il documento, poi ne scarica la scheda: l'URL della scheda contiene l'id che questa ricerca restituisce, quindi non e' anteprimabile."
+	if icaro.IsBDArchive(arc.Slug) {
+		nota += " Su questo archivio la ricerca e' forzata sull'indice Icaro (serve l'id del documento); se l'indice non ha il record, `get` ripiega sulla scheda del backend /bd/ e restituisce `pdf_url`."
+	}
+	return emitDryRunRequests(cmd, []map[string]any{target}, nota)
 }
 
 // normalizeParams rewrites a few flag inputs to the shape the portal expects:
@@ -887,17 +1059,100 @@ func commissioneOrdinale(code string) string {
 	return ""
 }
 
+// dryRunTarget descrive, nella lingua del backend che serve davvero
+// l'archivio, la richiesta che il comando farebbe.
+//
+// Gli archivi delle sedute (sommari, resoconti, convocazioni) sono migrati al
+// backend /bd/ e Search ce li instrada (vedi icaroclient.Client.Search), ma
+// l'anteprima li descriveva tutti come query Icaro: `resoconti cerca --dry-run`
+// annunciava `/icaro/default.jsp?icaDB=217&icaQuery=(18.LEGISL)`, un URL che
+// quel comando non interroga. Su un flag che esiste per diagnosticare, un
+// endpoint sbagliato detto con sicurezza è peggio del silenzio: manda a
+// cercare il guasto sul backend che non c'entra.
+func dryRunTarget(arc icaro.Archive, params map[string]string, isisRaw string) (map[string]any, error) {
+	out := map[string]any{"archive": arc.Slug, "archive_id": arc.ID}
+	if bd, ok := icaro.BDPreview(icaro.DefaultBaseURL, arc.Slug, params); ok {
+		// Un filtro che non si parsa fa fallire searchBD prima di qualunque
+		// richiesta: l'anteprima esce con lo stesso errore invece di stampare
+		// una richiesta che non partirebbe.
+		if bd.Invalid != nil {
+			return nil, usageErr(bd.Invalid)
+		}
+		// Su /bd/ non c'è una query ISIS: i filtri viaggiano come campi di una
+		// POST. Ma non viaggiano come li scrive l'utente — i nomi cambiano, i
+		// selettori di modalità si aggiungono, e tre filtri si risolvono solo
+		// al momento della richiesta. Stamparli come sono arrivati sarebbe la
+		// stessa bugia dell'endpoint sbagliato, un livello più giù: vedi
+		// icaroclient.BDPreview.
+		out["backend"] = "bd"
+		out["would_post"] = bd.Endpoint
+		out["post_fields"] = bd.PostFields
+		if len(bd.Anni) > 0 {
+			// Con --data non parte una richiesta: ne parte una per anno, e
+			// dentro ciascuna una per pagina. Enumerarli e' l'unico modo perche'
+			// da un dry run si capisca quante ne partono e come rifarle a mano.
+			out["anni"] = bd.Anni
+			out["richieste"] = fmt.Sprintf("almeno %d, una per anno con `page` a 1; dentro ciascun anno `page` cresce fino al numero di pagine che la risposta dichiara, o finché --limit è pieno", len(bd.Anni))
+		}
+		if len(bd.Deferred) > 0 {
+			out["deferred"] = bd.Deferred
+		}
+		return out, nil
+	}
+	expr := icaro.BuildQuery(arc, params, isisRaw)
+	out["backend"] = "icaro"
+	out["isis_query"] = expr
+	out["would_fetch"] = fmt.Sprintf("%s/icaro/default.jsp?icaDB=%s&icaQuery=%s", icaro.DefaultBaseURL, arc.ID, expr)
+	return out, nil
+}
+
+// dryRunTargetBySlug è dryRunTarget per i comandi che conoscono l'archivio per
+// slug; torna nil sugli slug sconosciuti, così il chiamante li salta come li
+// salterebbe a runtime.
+//
+// I parametri NON vengono normalizzati qui: normalizeParams riscrive i valori
+// (fra l'altro dirotta `codcom: 6` su `commissione: SESTA`) e non tutti i
+// chiamanti ci passano — `commissione dossier` manda `codcom` grezzo al
+// backend /bd/. Applicarlo d'ufficio farebbe annunciare all'anteprima un
+// parametro diverso da quello che parte davvero, cioè il difetto che questa
+// anteprima esiste per non avere. Chi normalizza a runtime lo fa anche qui.
+func dryRunTargetBySlug(slug string, params map[string]string) (map[string]any, error) {
+	arc := icaro.BySlug(slug)
+	if arc == nil {
+		return nil, nil
+	}
+	return dryRunTarget(*arc, params, "")
+}
+
+// emitDryRunRequests stampa l'anteprima dei comandi che interrogano più di un
+// archivio: una riga per richiesta, nell'ordine in cui partirebbero.
+func emitDryRunRequests(cmd *cobra.Command, requests []map[string]any, note string) error {
+	out := map[string]any{"dry_run": true, "requests": requests}
+	if note != "" {
+		out["note"] = note
+	}
+	return writeJSON(cmd.OutOrStdout(), out)
+}
+
 // emitDryRun prints the would-be query without hitting the network, useful
 // for --dry-run flows and Printing Press verify checks.
 func emitDryRun(cmd *cobra.Command, arc icaro.Archive, p cercaParams) error {
-	expr := icaro.BuildQuery(arc, normalizeParams(arc, p.Params), p.ISISRaw)
-	out := map[string]any{
-		"archive":     arc.Slug,
-		"archive_id":  arc.ID,
-		"isis_query":  expr,
-		"would_fetch": fmt.Sprintf("%s/icaro/default.jsp?icaDB=%s&icaQuery=%s", icaro.DefaultBaseURL, arc.ID, expr),
-		"dry_run":     true,
+	// Stessa condizione di runCerca, e per lo stesso motivo: gli archivi /bd/
+	// ricevono i parametri grezzi, la loro traduzione avviene dentro searchBD.
+	// Applicare normalizeParams qui faceva annunciare all'anteprima un
+	// parametro diverso da quello che il comando processa — `--codcom 6`
+	// riscritto in `commissione: SESTA`, che su /bd/ non e' cio' che viaggia.
+	// Se questa riga e quella di runCerca divergono di nuovo, l'anteprima
+	// ricomincia a mentire: vanno lette insieme.
+	searchParams := p.Params
+	if !icaro.IsBDArchive(arc.Slug) {
+		searchParams = normalizeParams(arc, p.Params)
 	}
+	out, err := dryRunTarget(arc, searchParams, p.ISISRaw)
+	if err != nil {
+		return err
+	}
+	out["dry_run"] = true
 	return writeJSON(cmd.OutOrStdout(), out)
 }
 
@@ -1017,7 +1272,14 @@ func writeRecordsCSV(out io.Writer, arc icaro.Archive, recs []icaro.Record, firm
 	}
 	hdr := []string{"doc_id", "title", "excerpt", "url"}
 	for _, c := range cols {
-		hdr = append(hdr, strings.ToLower(strings.TrimSuffix(c, ".")))
+		nome := strings.ToLower(strings.TrimSuffix(c, "."))
+		hdr = append(hdr, nome)
+		// Il CSV è la forma con cui questi dati finiscono in duckdb o in un
+		// foglio, ed è lì che le quattro grafie di data della fonte costano di
+		// più: la colonna normalizzata viaggia accanto all'originale.
+		if nome == "data" {
+			hdr = append(hdr, "data_iso")
+		}
 	}
 	if firmatari != nil {
 		hdr = append(hdr, "firmatari")
@@ -1041,6 +1303,9 @@ func writeRecordsCSV(out io.Writer, arc icaro.Archive, recs []icaro.Record, firm
 				continue
 			}
 			row = append(row, r.Fields[c])
+			if strings.ToLower(strings.TrimSuffix(c, ".")) == "data" {
+				row = append(row, dataISO(r.Fields[c]))
+			}
 		}
 		if firmatari != nil {
 			row = append(row, firmatariLine(firmatari[r.DocID]))

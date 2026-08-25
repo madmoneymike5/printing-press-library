@@ -59,7 +59,10 @@ func newNovelControversiesCmd(flags *rootFlags) *cobra.Command {
 			if enrich {
 				enrichPubTypes(ctx, works, 50)
 			}
-			_, stances := scoreWorks(works, query)
+			prog := newProgress(flags, "analyzing works", len(works))
+			prog.update(len(works))
+			_, stances := scoreWorks(ctx, works, query)
+			prog.done()
 
 			out := controversyOutput{Query: query, StudyCount: len(works)}
 			for _, s := range stances {

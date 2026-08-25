@@ -2,6 +2,14 @@
 
 This file is maintained by printing-press-library release automation. Do not hand-edit release sections in normal PRs.
 
+## 2026.8.4 - 2026-08-17
+
+- fix(catalog): align Go fallback docs with toolchain floor (#1735).
+
+## 2026.8.3 - 2026-08-17
+
+- test(table-reservation-goat): fix racy explicit-card legacy-slot fixture (#1659).
+
 ## 2026.8.2 - 2026-08-13
 
 - fix(table-reservation-goat): restore OpenTable availability and Charlotte resolution (#1686).

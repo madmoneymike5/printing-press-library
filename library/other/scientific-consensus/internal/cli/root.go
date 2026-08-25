@@ -277,6 +277,10 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.AddCommand(newRankJournalsCmd(flags))
 	rootCmd.AddCommand(newTimelineCmd(flags))
 	rootCmd.AddCommand(newTrendsCmd(flags))
+	rootCmd.AddCommand(newConvertCmd(flags))
+	rootCmd.AddCommand(newBatchCmd(flags))
+	rootCmd.AddCommand(newCitationsCmd(flags))
+	rootCmd.AddCommand(newReportCmd(flags))
 
 	return rootCmd
 }

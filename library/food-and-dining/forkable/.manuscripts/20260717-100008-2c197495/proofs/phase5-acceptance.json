@@ -11,10 +11,10 @@
   "auth_context": {
     "type": "cookie"
   },
-  "source_fingerprint": "8999b644cbad8642cbb97b72b45cf07c35e01281e37c698d3d8649df3047b596",
+  "source_fingerprint": "1b5c09dd71b5cf94c6cc55fe36673627428c240bef0835a39db5e80ee31ce7c2",
   "source_files": {
     "cmd/forkable-pp-cli/main.go": "13f26e6794b24f90dfe342a2c30fcc7ef7cd90ce3912e6459794f5fd8f137d42",
-    "cmd/forkable-pp-mcp/main.go": "3cc57b93e4235af616419c85644919c0c9778478c233d83409e3222665927b98",
+    "cmd/forkable-pp-mcp/main.go": "ce4415af4a8e8682603b27530cbc64dbb0769b5e7ee00d42c7da530957cae288",
     "go.mod": "caaad8e086512c174397b3b5d4ee227fd0f1176c774a5316e24e91450e3cf831",
     "go.sum": "4cfef7b0f4b19e6ee3cfd90c7b877ee0d5418225f8b85b17965c4bdab90ea971",
     "internal/cache/cache.go": "dd18bc27443b0d33c2d0ad4f255b8aae7e37fa0ee279ebc84687641098a4eda4",
@@ -76,7 +76,7 @@
     "internal/cli/upcoming_digest_test.go": "d1263f5d5d88ee19bd8e835d96fa5605dda41b105bd6bc1cc0e9cc892075ad8d",
     "internal/cli/venue_rotation.go": "f91c7016b8feaf9f18793dc43fd2cb92a2b09b6b0bea088f55e725d066db338e",
     "internal/cli/venue_rotation_test.go": "758658efff2aa33f0e1f05c8d9d5f2c9ae856cef1354b39e70b1f807537f18a0",
-    "internal/cli/version.go": "9d70505c57ae6345d69608dd4b1bc67c59d4d3ca60adbae861c8e856bdb16e23",
+    "internal/cli/version.go": "4f5b7983ef2637c2c2db3e10bbe96a206862802f1c53067794dfd4735cb9d425",
     "internal/cli/which.go": "93320548a9b74126d897c8e011a037a449af78ef9f27244f67e23c80900b4690",
     "internal/cli/which_test.go": "e678ab5671b5ed20c83776c61f0bb1b19b47a4c6d6270398ac34c349eda65ee6",
     "internal/cli/why_picked.go": "a4859dc30c01957e3ec75d747538c78caae9dc9754a012e2cc246aa52233186d",

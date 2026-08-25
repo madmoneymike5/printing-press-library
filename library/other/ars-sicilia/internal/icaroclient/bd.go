@@ -11,8 +11,8 @@ package icaroclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -93,6 +93,84 @@ var bdArchives = map[string]bdSpec{
 func IsBDArchive(slug string) bool {
 	_, ok := bdArchives[slug]
 	return ok
+}
+
+// BDEndpoint torna l'URL a cui il backend /bd/ riceve la POST di ricerca per
+// quell'archivio, e false se l'archivio non è servito da /bd/. Serve alle
+// anteprime --dry-run: senza, annunciano l'URL Icaro anche dove la richiesta
+// parte davvero verso /bd/, cioè dicono con sicurezza un endpoint che non
+// verrà interrogato — su un comando che esiste apposta per diagnosticare.
+func BDEndpoint(baseURL, slug string) (string, bool) {
+	spec, ok := bdArchives[slug]
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSuffix(baseURL, "/") + "/bd/" + spec.path, true
+}
+
+// BDPreview descrive la POST che searchBD manderebbe, senza mandarla.
+//
+// Mostrare i filtri della riga di comando come se fossero i campi della POST
+// sarebbe una seconda bugia dell'anteprima, sorella di quella che il campo
+// `backend` ha appena chiuso: searchBD non li spedisce come li riceve. I nomi
+// passano per spec.fields (`legisl` → `$Ilegislatura`), i selettori di modalità
+// in spec.static viaggiano sempre, e tre filtri non sono affatto campi —
+// `--data` diventa un ciclo sul campo `anno` più un filtro client-side sulle
+// righe, mentre `--oratore` e `--commissione`/`--codcom` si risolvono da nome a
+// id leggendo le <option> del form, che è una richiesta e un dry run non la fa.
+//
+// Quindi si separano le due cose: PostFields sono i campi che partirebbero
+// esattamente così, Deferred nomina i filtri che si risolvono al momento della
+// richiesta e dice in che cosa si trasformano. Un'anteprima che tace la
+// differenza manda a cercare il guasto su parametri che nessuno spedisce.
+type BDPreviewResult struct {
+	Endpoint   string
+	PostFields map[string]string
+	Deferred   map[string]string
+	// Invalid non e' nil quando un filtro non si parsa: searchBD in quel caso
+	// esce con InvalidParamError PRIMA di mandare qualunque cosa, e l'anteprima
+	// deve fare lo stesso. Ignorare l'errore e stampare comunque una richiesta
+	// plausibile e' il peggiore dei casi: `--data 2025-01-01:garbage --dry-run`
+	// diceva «ecco cosa parte», mentre senza --dry-run lo stesso comando
+	// fallisce e non parte nulla.
+	Invalid error
+	// Anni sono i valori che il campo `anno` prende, uno per giro: con --data
+	// searchBD non manda UNA richiesta, ne manda una per anno dell'intervallo
+	// (e dentro ciascuna una per pagina). Dire solo «l'intervallo si risolve al
+	// momento della richiesta» lasciava credere a una richiesta sola, e da un
+	// dry run su un intervallo di piu' anni non si capiva quante ne partono ne'
+	// come rifarle a mano. Gli anni si ricavano senza rete — bdDateFilter parsa
+	// e basta — quindi tacerli era una scelta, non un limite.
+	Anni []string
+}
+
+// BDPreview torna false sugli archivi che /bd/ non serve.
+func BDPreview(baseURL, slug string, params map[string]string) (BDPreviewResult, bool) {
+	spec, ok := bdArchives[slug]
+	if !ok {
+		return BDPreviewResult{}, false
+	}
+	out := BDPreviewResult{
+		Endpoint:   strings.TrimSuffix(baseURL, "/") + "/bd/" + spec.path,
+		PostFields: map[string]string{},
+		Deferred:   map[string]string{},
+	}
+	// sessionHTML vuoto = modo anteprima. La form e' quella che searchBD
+	// manderebbe, costruita dalla stessa funzione: non c'e' una seconda
+	// implementazione che possa divergere.
+	req, err := bdBuildForm(slug, spec, params, "", true)
+	if err != nil {
+		out.Invalid = err
+		return out, true
+	}
+	for k, vs := range req.Form {
+		if len(vs) > 0 {
+			out.PostFields[k] = vs[0]
+		}
+	}
+	out.Anni = req.Anni
+	out.Deferred = req.Deferred
+	return out, true
 }
 
 // bdOption è una <option> di un <select> del form (oratori o commissioni): id,
@@ -305,121 +383,214 @@ func unescapeMini(s string) string {
 // paginati, parsando l'HTML in Record. Onora Limit/MaxPages/Truncated come
 // Search. Il filtro --data non ha un campo server (il portale filtra per
 // `anno`): si deriva l'anno per il server e si filtra client-side sulla data.
-func (c *Client) searchBD(ctx context.Context, arc Archive, opts SearchOptions) ([]Record, error) {
-	spec := bdArchives[arc.Slug]
-	bdURL := c.BaseURL + "/bd/" + spec.path
+// bdRequest e' la richiesta che il backend /bd/ riceverebbe: la form gia'
+// compilata, i giri sugli anni, il filtro client-side sulle date, e i filtri
+// che senza la sessione non si possono risolvere.
+//
+// Esiste perche' searchBD e l'anteprima --dry-run devono descrivere la stessa
+// cosa, e per un po' non l'hanno fatto: l'anteprima reimplementava a mano cio'
+// che searchBD costruisce, e sette rilievi di review hanno trovato altrettante
+// divergenze — endpoint sbagliato, nomi di campo non tradotti, gli anni taciuti,
+// `page` e `anno` assenti, `--codcom` riscritto, una data malformata accettata
+// in anteprima e rifiutata dal vivo, un filtro non supportato differito invece
+// che rifiutato. Due implementazioni parallele restano d'accordo solo per
+// ispezione, ed e' cosi' che le divergenze si accumulano senza che nulla lo
+// segnali. Con un costruttore solo, divergere non e' piu' possibile.
+type bdRequest struct {
+	Form     url.Values
+	Anni     []string
+	KeepDate func(rowDate string) bool
+	// Deferred e' popolato solo in modo anteprima: nomina i filtri che
+	// richiedono la sessione e dice in che cosa si trasformano.
+	Deferred map[string]string
+	// VuotoPerAnno segnala l'unico caso in cui il percorso vivo non manda
+	// nulla e non e' un errore: --anno fuori dall'intervallo di --data, dove
+	// l'intersezione dei filtri e' vuota e zero risultati e' la risposta giusta.
+	VuotoPerAnno bool
+}
 
-	// Sessione (cookie JSESSIONID nel jar del Client). La risposta contiene anche
-	// il form, incluso il <select> degli oratori: la teniamo per risolvere --oratore.
-	sessionHTML, err := c.get(ctx, bdURL)
-	if err != nil {
-		return nil, fmt.Errorf("bd session (%s): %w", arc.Slug, err)
+// bdBuildForm compila la richiesta per il backend /bd/.
+//
+// `anteprima` e' un parametro esplicito e non si deduce da sessionHTML vuoto.
+// Dedurlo sarebbe un guasto silenzioso: se la GET di sessione tornasse 200 con
+// corpo vuoto — portale che sbanda, risposta troncata — il percorso VIVO
+// scivolerebbe in modo anteprima, non risolverebbe --oratore e
+// --commissione/--codcom, e manderebbe la POST senza quel filtro. Il risultato
+// sarebbe piu' largo di quello chiesto, presentato come buono: esattamente il
+// filtro che sparisce in silenzio contro cui e' costruito il resto di questo
+// file. In anteprima --oratore e --commissione/--codcom non si risolvono perche'
+// leggono le <option> del form, cioe' una richiesta che un dry run non fa, e
+// finiscono in Deferred; dal vivo la risoluzione avviene e un valore che non
+// aggancia nulla produce UnresolvedFilterError come prima.
+func bdBuildForm(slug string, spec bdSpec, params map[string]string, sessionHTML string, anteprima bool) (bdRequest, error) {
+	out := bdRequest{Form: url.Values{}, Deferred: map[string]string{}}
+
+	// Un filtro che questo archivio non sa applicare fallisce, non viene
+	// ignorato: silenziosamente restituirebbe un set piu' largo di quello che
+	// la riga di comando chiede. Vale anche in anteprima, dove prima usciva
+	// come "differito" mentre il comando vero sarebbe fallito.
+	if err := bdUnsupportedParams(slug, spec, params); err != nil {
+		return out, err
 	}
 
-	// Un filtro che il backend /bd/ non sa applicare deve fallire, non essere
-	// ignorato: silenziosamente avrebbe restituito un set più largo di quello
-	// che la riga di comando chiede (vedi bdUnsupported).
-	if err := bdUnsupported(arc.Slug, spec, opts); err != nil {
-		return nil, err
-	}
-
-	form := url.Values{}
 	for k, v := range spec.static {
-		form.Set(k, v)
+		out.Form.Set(k, v)
 	}
-	var keepDate func(rowDate string) bool
-	var years []string
-	for k, v := range opts.Params {
+	// `page` viaggia su ogni richiesta e la prima di ogni giro e' sempre 1. Il
+	// ciclo di searchBD lo riscrive a ogni pagina con lo stesso valore di
+	// partenza: metterlo qui non cambia nulla al vivo e rende l'anteprima
+	// riproducibile alla lettera.
+	out.Form.Set("page", "1")
+
+	for k, v := range params {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			continue
 		}
-		// L'anno server per --data lo imposta il loop sugli anni più sotto:
-		// qui si ricava solo l'intervallo (anni coinvolti + filtro client-side).
-		if k == "data" {
-			years, keepDate = bdDateFilter(v)
-			// Un valore che non si parsa lasciava entrambi a nil, e la ricerca
-			// proseguiva senza vincolo d'anno sul form e senza filtro
-			// client-side: `--data 2025-01-01:garbage` non restituiva «niente in
-			// quell'intervallo», restituiva l'archivio intero dall'inizio —
-			// resoconti fino al 12/04/1951 — presentandolo come esito buono. Il
-			// filtro che sparisce in silenzio e' peggio del filtro che fallisce.
-			if years == nil || keepDate == nil {
-				return nil, &InvalidParamError{Filtro: "--data", Valore: v,
+		switch k {
+		case "data":
+			// Il campo server `anno` accetta un anno solo: l'intervallo diventa
+			// un giro per anno piu' un filtro sulle righe ricevute.
+			anni, keep := bdDateFilter(v)
+			if anni == nil || keep == nil {
+				// Un valore che non si parsa lasciava entrambi a nil e la
+				// ricerca proseguiva senza vincolo d'anno sul form e senza
+				// filtro client-side: `--data 2025-01-01:garbage` non
+				// restituiva «niente in quell'intervallo», restituiva
+				// l'archivio intero dall'inizio — resoconti fino al 12/04/1951
+				// — presentandolo come esito buono. Il filtro che sparisce in
+				// silenzio e' peggio del filtro che fallisce.
+				return out, &InvalidParamError{Filtro: "--data", Valore: v,
 					Rimedio: "usa YYYY-MM-DD, AAMMGG, o un intervallo YYYY-MM-DD:YYYY-MM-DD (AAMMGG/AAMMGG)"}
 			}
-			continue
-		}
-		// oratore, codcom e commissione sono risolti sotto (servono le <option>).
-		if k == "oratore" || k == "codcom" || k == "commissione" {
-			continue
-		}
-		if field, ok := spec.fields[k]; ok {
-			form.Set(field, v)
+			out.Anni, out.KeepDate = anni, keep
+		case "oratore", "codcom", "commissione":
+			// Risolti sotto: servono le <option> della sessione.
+		default:
+			if field, ok := spec.fields[k]; ok {
+				out.Form.Set(field, v)
+			}
 		}
 	}
 
 	// --anno e --data scrivono lo stesso campo server `anno`: si intersecano in
 	// modo esplicito (l'anno deve cadere nell'intervallo della data), invece di
-	// lasciare che vinca l'ordine — casuale — di iterazione della mappa Params.
-	if anno := strings.TrimSpace(opts.Params["anno"]); anno != "" && len(years) > 0 {
-		keep := years[:0]
-		for _, y := range years {
+	// lasciare che vinca l'ordine — casuale — di iterazione della mappa params.
+	if anno := strings.TrimSpace(params["anno"]); anno != "" && len(out.Anni) > 0 {
+		keep := out.Anni[:0]
+		for _, y := range out.Anni {
 			if y == anno {
 				keep = append(keep, y)
 			}
 		}
-		years = keep
-		if len(years) == 0 {
-			return nil, nil // --anno fuori dall'intervallo di --data: nessun risultato
+		out.Anni = keep
+		if len(out.Anni) == 0 {
+			// Nessuna richiesta partirebbe: in anteprima si toglie anche il
+			// campo, o si annuncerebbe una richiesta plausibile che non parte.
+			out.Form.Del("anno")
+			out.Deferred["anno"] = "fuori dall'intervallo di --data: nessun anno da interrogare, la ricerca non restituirebbe nulla e nessuna richiesta partirebbe"
+			out.VuotoPerAnno = true
+			return out, nil
 		}
 	}
+	// Il primo giro e' l'unico valore dicibile senza indovinare; il ciclo di
+	// searchBD riscrive il campo a ogni anno.
+	if len(out.Anni) > 0 {
+		out.Form.Set("anno", out.Anni[0])
+		out.Deferred["data"] = "il backend non ha un campo data: l'intervallo diventa una richiesta per ciascun anno in `anni`, che sono i valori che il campo `anno` prende uno per giro — nei campi c'e' il primo, cioe' quello della prima richiesta — piu' un filtro sulle righe ricevute per tagliare i giorni fuori intervallo. Dentro ogni anno `page` parte da 1 e cresce di uno fino al numero di pagine che la risposta dichiara, o finche' --limit e' pieno: quel numero sta nella risposta, quindi le pagine oltre la prima non sono anteprimabili"
+	}
 
-	legisl := strings.TrimSpace(opts.Params["legisl"])
+	legisl := strings.TrimSpace(params["legisl"])
 
-	// Filtro --oratore: risolve il nome negli ID del <select> oratori del form
-	// (con le legislature in cui l'oratore è attivo) e li invia in modalità "or".
+	// --oratore: risolve il nome negli ID del <select> oratori del form (con le
+	// legislature in cui l'oratore e' attivo) e li invia in modalita' "or".
 	if spec.speakerField != "" {
-		if orat := strings.TrimSpace(opts.Params["oratore"]); orat != "" {
-			opts := parseSelectOptions(sessionHTML, spec.speakerField)
-			ids := resolveOptionIDs(opts, orat, legisl)
-			if len(ids) == 0 {
-				// Un risultato vuoto direbbe "non è mai intervenuto", che è
-				// un'altra affermazione: qui il nome non esiste in anagrafica.
-				return nil, &UnresolvedFilterError{Filtro: "--oratore", Valore: orat, Legisl: legisl,
-					Rimedio: "Prova con il solo cognome, o con una porzione del nome.",
-					Disponibili: suggestOptionNames(opts, orat, legisl)}
+		if orat := strings.TrimSpace(params["oratore"]); orat != "" {
+			if anteprima {
+				out.Deferred["oratore"] = "risolto da nome a id leggendo le <option> di " + spec.speakerField + " nel form, che richiede una richiesta"
+			} else {
+				sel := parseSelectOptions(sessionHTML, spec.speakerField)
+				ids := resolveOptionIDs(sel, orat, legisl)
+				if len(ids) == 0 {
+					// Un risultato vuoto direbbe "non e' mai intervenuto", che
+					// e' un'altra affermazione: qui il nome non esiste in
+					// anagrafica.
+					return out, &UnresolvedFilterError{Filtro: "--oratore", Valore: orat, Legisl: legisl,
+						Rimedio:     "Prova con il solo cognome, o con una porzione del nome.",
+						Disponibili: suggestOptionNames(sel, orat, legisl)}
+				}
+				out.Form[spec.speakerField] = ids
+				out.Form.Set("$S"+spec.speakerField, "or")
 			}
-			form[spec.speakerField] = ids
-			form.Set("$S"+spec.speakerField, "or")
 		}
 	}
 
-	// Filtro --commissione / --codcom: risolve in id (per-legislatura) dal <select>.
+	// --commissione / --codcom: risolve in id (per-legislatura) dal <select>.
 	if spec.commissioneField != "" {
-		cod := strings.TrimSpace(opts.Params["codcom"])
-		com := strings.TrimSpace(opts.Params["commissione"])
+		cod := strings.TrimSpace(params["codcom"])
+		com := strings.TrimSpace(params["commissione"])
 		if cod != "" || com != "" {
-			selOpts := parseSelectOptions(sessionHTML, spec.commissioneField)
-			ids := resolveCommissioneIDs(selOpts, cod, com, legisl)
-			if len(ids) == 0 {
-				// Come per --oratore: zero record direbbe "questa commissione non
-				// ha lavori", che è un'altra affermazione.
-				val, filtro := com, "--commissione"
-				rimedio := "Usa il nome ordinale della commissione: PRIMA, SECONDA, TERZA, QUARTA, QUINTA, SESTA."
-				if val == "" {
-					val, filtro = cod, "--codcom"
-					rimedio = "Il codice commissione va da 1 a 6 (1=PRIMA, 2=SECONDA, ... 6=SESTA); per cercarla per nome usa --commissione."
+			if anteprima {
+				chiave := "commissione"
+				if com == "" {
+					chiave = "codcom"
 				}
-				return nil, &UnresolvedFilterError{Filtro: filtro, Valore: val, Legisl: legisl,
-					Disponibili: suggestOptionNames(selOpts, val, legisl), Rimedio: rimedio}
-			}
-			form[spec.commissioneField] = ids
-			if spec.commissioneMode != "" {
-				form.Set("$S"+spec.commissioneField, spec.commissioneMode)
+				out.Deferred[chiave] = "risolto in id per-legislatura leggendo le <option> di " + spec.commissioneField + " nel form, che richiede una richiesta"
+			} else {
+				selOpts := parseSelectOptions(sessionHTML, spec.commissioneField)
+				ids := resolveCommissioneIDs(selOpts, cod, com, legisl)
+				if len(ids) == 0 {
+					// Come per --oratore: zero record direbbe "questa
+					// commissione non ha lavori", che e' un'altra affermazione.
+					val, filtro := com, "--commissione"
+					rimedio := "Usa il nome ordinale della commissione: PRIMA, SECONDA, TERZA, QUARTA, QUINTA, SESTA."
+					if val == "" {
+						val, filtro = cod, "--codcom"
+						rimedio = "Il codice commissione va da 1 a 6 (1=PRIMA, 2=SECONDA, ... 6=SESTA); per cercarla per nome usa --commissione."
+					}
+					return out, &UnresolvedFilterError{Filtro: filtro, Valore: val, Legisl: legisl,
+						Disponibili: suggestOptionNames(selOpts, val, legisl), Rimedio: rimedio}
+				}
+				out.Form[spec.commissioneField] = ids
+				if spec.commissioneMode != "" {
+					out.Form.Set("$S"+spec.commissioneField, spec.commissioneMode)
+				}
 			}
 		}
 	}
+
+	return out, nil
+}
+
+func (c *Client) searchBD(ctx context.Context, arc Archive, opts SearchOptions) ([]Record, error) {
+	spec := bdArchives[arc.Slug]
+	bdURL := c.BaseURL + "/bd/" + spec.path
+
+	// Sessione (cookie JSESSIONID nel jar del Client). La risposta contiene anche
+	// il form, inclusi i <select> di oratori e commissioni: la teniamo per
+	// risolvere --oratore e --commissione/--codcom.
+	sessionHTML, err := c.get(ctx, bdURL)
+	if err != nil {
+		return nil, fmt.Errorf("bd session (%s): %w", arc.Slug, err)
+	}
+
+	// Un filtro che il backend non sa applicare deve fallire, non essere
+	// ignorato (vedi bdUnsupported).
+	if err := bdUnsupported(arc.Slug, spec, opts); err != nil {
+		return nil, err
+	}
+
+	// La form la costruisce bdBuildForm, la stessa che l'anteprima --dry-run
+	// stampa: e' l'unico modo perche' le due non possano descrivere richieste
+	// diverse (vedi bdRequest).
+	req, err := bdBuildForm(arc.Slug, spec, opts.Params, sessionHTML, false)
+	if err != nil {
+		return nil, err
+	}
+	if req.VuotoPerAnno {
+		return nil, nil // --anno fuori dall'intervallo di --data: nessun risultato
+	}
+	form, years, keepDate := req.Form, req.Anni, req.KeepDate
 
 	maxPages := opts.MaxPages
 	if maxPages <= 0 {
@@ -504,17 +675,26 @@ years:
 // perché un filtro caduto restituisce più record di quanti la riga di comando
 // ne chieda — un errore silenzioso, e quindi peggiore di un comando che fallisce.
 func bdUnsupported(slug string, spec bdSpec, opts SearchOptions) error {
+	// --isis-query non e' un parametro della form, quindi non passa dal
+	// costruttore: resta l'unico controllo che vive qui.
+	if strings.TrimSpace(opts.ISISRaw) != "" {
+		return fmt.Errorf("l'archivio %s è servito dal backend /bd/ del portale, che non supporta --isis-query: rimuovi il filtro (gli altri filtri restano validi)", slug)
+	}
+	return bdUnsupportedParams(slug, spec, opts.Params)
+}
+
+// bdUnsupportedParams e' la meta' che guarda i soli parametri della form, ed e'
+// chiamata anche da bdBuildForm: cosi' l'anteprima rifiuta gli stessi filtri
+// che il percorso vivo rifiuta, invece di presentarli come "differiti".
+func bdUnsupportedParams(slug string, spec bdSpec, params map[string]string) error {
 	unsupported := func(flag string) error {
 		return fmt.Errorf("l'archivio %s è servito dal backend /bd/ del portale, che non supporta --%s: rimuovi il filtro (gli altri filtri restano validi)", slug, flag)
 	}
-	if strings.TrimSpace(opts.ISISRaw) != "" {
-		return unsupported("isis-query")
-	}
 	// Ordine stabile: le mappe Go iterano a caso e il messaggio d'errore non
 	// deve dipendere dal giro.
-	keys := make([]string, 0, len(opts.Params))
-	for k := range opts.Params {
-		if strings.TrimSpace(opts.Params[k]) != "" {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		if strings.TrimSpace(params[k]) != "" {
 			keys = append(keys, k)
 		}
 	}
@@ -761,37 +941,23 @@ func romanToArabic(s string) string {
 }
 
 // post esegue una POST x-www-form-urlencoded usando il jar/limiter del Client.
+// Come la GET, viene ritentata se il portale tronca la risposta: è una ricerca,
+// quindi rigiocarla non ha effetti collaterali.
 func (c *Client) post(ctx context.Context, rawURL string, form url.Values) (string, error) {
-	c.limiter.Wait()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if c.UserAgent != "" {
-		req.Header.Set("User-Agent", c.UserAgent)
-	}
-	req.Header.Set("Origin", c.BaseURL)
-	req.Header.Set("Referer", rawURL)
-	req.Header.Set("Accept-Language", "it-IT,it;q=0.9")
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 429 {
-		c.limiter.OnRateLimit()
-		return "", &HTTPRateLimitError{URL: rawURL}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return "", fmt.Errorf("unexpected status %d for %s", resp.StatusCode, rawURL)
-	}
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	c.limiter.OnSuccess()
-	return string(raw), nil
+	return c.read(ctx, rawURL, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if c.UserAgent != "" {
+			req.Header.Set("User-Agent", c.UserAgent)
+		}
+		req.Header.Set("Origin", c.BaseURL)
+		req.Header.Set("Referer", rawURL)
+		req.Header.Set("Accept-Language", "it-IT,it;q=0.9")
+		return req, nil
+	})
 }
 
 // SpeakerCount è il numero di sedute d'Aula in cui un oratore è intervenuto.
@@ -957,18 +1123,23 @@ func (c *Client) CommissioniDisponibili(ctx context.Context, legisl string) ([]s
 // legislatura data e, per ciascuno, conta le sedute (una POST per oratore). anno
 // opzionale restringe l'anno. progress, se non nil, è chiamato ad ogni oratore.
 // Richiede legisl (senza, gli oratori sarebbero ~1000 = troppe richieste).
-func (c *Client) SpeakerSessionCounts(ctx context.Context, legisl, anno string, progress func(done, total int)) ([]SpeakerCount, error) {
+//
+// Il secondo valore elenca gli oratori che il backend non ha misurato: sono 91
+// richieste in fila per la legislatura XVIII, e su un portale che ne tronca una
+// ogni tanto pretenderle tutte significa non avere mai la classifica. Chi chiama
+// deve dichiarare quei nomi, non nasconderli in una classifica che sembra piena.
+func (c *Client) SpeakerSessionCounts(ctx context.Context, legisl, anno string, progress func(done, total int)) ([]SpeakerCount, []string, error) {
 	if strings.TrimSpace(legisl) == "" {
-		return nil, fmt.Errorf("legislatura richiesta per la classifica oratori")
+		return nil, nil, fmt.Errorf("legislatura richiesta per la classifica oratori")
 	}
 	spec, ok := bdArchives["resoconti"]
 	if !ok {
-		return nil, fmt.Errorf("archivio resoconti non configurato per /bd/")
+		return nil, nil, fmt.Errorf("archivio resoconti non configurato per /bd/")
 	}
 	bdURL := c.BaseURL + "/bd/" + spec.path
 	sessionHTML, err := c.get(ctx, bdURL)
 	if err != nil {
-		return nil, fmt.Errorf("bd session (resoconti): %w", err)
+		return nil, nil, fmt.Errorf("bd session (resoconti): %w", err)
 	}
 	var sel []bdOption
 	for _, s := range parseSelectOptions(sessionHTML, spec.speakerField) {
@@ -977,9 +1148,10 @@ func (c *Client) SpeakerSessionCounts(ctx context.Context, legisl, anno string, 
 		}
 	}
 	out := make([]SpeakerCount, 0, len(sel))
+	var persi []string
 	for i, s := range sel {
 		if ctx.Err() != nil {
-			return out, ctx.Err()
+			return out, persi, ctx.Err()
 		}
 		form := url.Values{}
 		form.Set("$Ilegislatura", legisl)
@@ -991,7 +1163,24 @@ func (c *Client) SpeakerSessionCounts(ctx context.Context, legisl, anno string, 
 		form.Set("page", "1")
 		body, err := c.post(ctx, bdURL, form)
 		if err != nil {
-			return out, err
+			// Il 429 fa eccezione: non è una richiesta persa fra le altre, è il
+			// backend che chiede tregua. Proseguire gliene sparerebbe altre
+			// novanta e perderebbe l'errore su cui il chiamante regola il codice
+			// di uscita dedicato.
+			if rl := new(HTTPRateLimitError); errors.As(err, &rl) {
+				return out, persi, fmt.Errorf("classifica oratori: %w", err)
+			}
+			// Una richiesta persa non deve portarsi via le novanta riuscite.
+			// Con un oratore per richiesta e un backend che tronca a
+			// intermittenza, arrendersi al primo errore significava non vedere
+			// mai la classifica: si annota chi manca e si prosegue. Chi legge
+			// deve saperlo — una classifica parziale spacciata per completa
+			// sarebbe la stessa bugia del not-found sui documenti.
+			persi = append(persi, s.Name)
+			if progress != nil {
+				progress(i+1, len(sel))
+			}
+			continue
 		}
 		n := 0
 		if m := reBDCount.FindStringSubmatch(body); m != nil {
@@ -1002,6 +1191,12 @@ func (c *Client) SpeakerSessionCounts(ctx context.Context, legisl, anno string, 
 			progress(i+1, len(sel))
 		}
 	}
+	// Zero misurati non è una classifica parziale, è un comando fallito: dirlo
+	// come errore invece di restituire una lista vuota, che si leggerebbe come
+	// «nessuno è mai intervenuto».
+	if len(out) == 0 && len(persi) > 0 {
+		return nil, persi, fmt.Errorf("classifica oratori: nessuno dei %d oratori misurato, il backend /bd/ non ha risposto", len(persi))
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Count > out[j].Count })
-	return out, nil
+	return out, persi, nil
 }

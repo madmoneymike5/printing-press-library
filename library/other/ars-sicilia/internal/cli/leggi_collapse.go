@@ -25,8 +25,13 @@ import (
 // "rifiuti", e con una ricerca per anno sono quelli entrati nella finestra
 // scaricata. Il nome dice "trovati" per non far leggere un totale dove non c'è.
 type leggeAggregata struct {
-	Legisl          string   `json:"legisl,omitempty"`
-	Atto            string   `json:"atto,omitempty"`
+	Legisl string `json:"legisl,omitempty"`
+	Atto   string `json:"atto,omitempty"`
+	// Numero è il numero nudo ricavato dall'Atto ("L.R. 14" → "14"): è quello
+	// che si passa a --numero, e finora non c'era modo di rileggerlo
+	// dall'output. `leggi cerca --numero 21 --select numero` avvisava che
+	// "numero non esiste in questi record", perché il campo si chiama atto.
+	Numero          string   `json:"numero,omitempty"`
 	Data            string   `json:"data,omitempty"`
 	Titolo          string   `json:"titolo,omitempty"`
 	ArticoliTrovati int      `json:"articoli_trovati"`
@@ -57,6 +62,7 @@ func collapseLeggi(recs []icaro.Record) []leggeAggregata {
 			out = append(out, leggeAggregata{
 				Legisl: legisl,
 				Atto:   atto,
+				Numero: numeroDaAtto(atto),
 				Data:   data,
 				Titolo: r.Title,
 				URL:    r.URL,
@@ -97,4 +103,18 @@ func leggiRawLimit(limitLeggi int) int {
 		raw = 500
 	}
 	return raw
+}
+
+// numeroDaAtto estrae il numero nudo da un atto come "L.R. 14". Torna "" se
+// non c'è una cifra: meglio nessun campo che un numero inventato.
+func numeroDaAtto(atto string) string {
+	var num strings.Builder
+	for _, r := range atto {
+		if r >= '0' && r <= '9' {
+			num.WriteRune(r)
+		} else if num.Len() > 0 {
+			break
+		}
+	}
+	return num.String()
 }

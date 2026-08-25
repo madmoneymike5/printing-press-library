@@ -4,6 +4,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,17 @@ var populationProbes = map[string]string{
 	"older adults":        `(?i)\b(elderly|older adults?|geriatric|aged)\b`,
 	"pregnancy":           `(?i)\b(pregnan|maternal|prenatal|gestational)\b`,
 	"low-income settings": `(?i)\b(low[- ]income|developing countr|sub-saharan|lmic)\b`,
+}
+
+// sortedProbeLabels returns the population probe labels in sorted order so
+// findings are emitted deterministically (Go map iteration order is random).
+func sortedProbeLabels() []string {
+	labels := make([]string, 0, len(populationProbes))
+	for label := range populationProbes {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	return labels
 }
 
 func newNovelGapsCmd(flags *rootFlags) *cobra.Command {
@@ -78,7 +90,8 @@ func newNovelGapsCmd(flags *rootFlags) *cobra.Command {
 			out.HasRCT = apexRank <= scengine.TierRank(scengine.DesignRCT)
 
 			combined := strings.Builder{}
-			for _, wk := range works {
+			prog := newProgress(flags, "scanning works", len(works))
+			for i, wk := range works {
 				if wk.Year > out.LatestYear {
 					out.LatestYear = wk.Year
 				}
@@ -86,7 +99,9 @@ func newNovelGapsCmd(flags *rootFlags) *cobra.Command {
 				combined.WriteByte(' ')
 				combined.WriteString(strings.ToLower(wk.Abstract))
 				combined.WriteByte(' ')
+				prog.update(i + 1)
 			}
+			prog.done()
 			hay := combined.String()
 
 			// Finding: no strong designs.
@@ -105,9 +120,9 @@ func newNovelGapsCmd(flags *rootFlags) *cobra.Command {
 				out.Findings = append(out.Findings, gapFinding{Kind: "thin-literature",
 					Detail: fmt.Sprintf("only %d total works match this topic — an understudied area", total)})
 			}
-			// Population gaps.
-			for label, re := range populationProbes {
-				if !reMatch(re, hay) {
+			// Population gaps, in deterministic (sorted-label) order.
+			for _, label := range sortedProbeLabels() {
+				if !reMatch(populationProbes[label], hay) {
 					out.Findings = append(out.Findings, gapFinding{Kind: "understudied-population",
 						Detail: "little or no coverage of " + label})
 				}

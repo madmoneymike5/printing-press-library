@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +144,52 @@ func TestUnknownSelectNames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Quando ogni nome chiesto esiste anche nella radice, l'array annidato non
+// esce: senza avviso `ddl iter --select numero,titolo` dava 0 eventi su 31 con
+// stderr muto, e chi legge conclude che la cronologia non esiste.
+func TestAvvisoArrayScartato(t *testing.T) {
+	originale := json.RawMessage(`{"numero":6030,"titolo":"un ddl","eventi":[{"data":"13 gen 2026","fase":"commissione"},{"data":"27.01.26","fase":"presentazione"}]}`)
+
+	scartato := json.RawMessage(`{"numero":6030,"titolo":"un ddl"}`)
+	msg := avvisoArrayScartato(originale, scartato)
+	for _, atteso := range []string{"eventi", "2 righe", "data, fase"} {
+		if !strings.Contains(msg, atteso) {
+			t.Errorf("l'avviso deve citare %q: %q", atteso, msg)
+		}
+	}
+
+	// L'array c'e' ancora: niente da dire.
+	tenuto := json.RawMessage(`{"titolo":"un ddl","eventi":[{"data":"13 gen 2026"}]}`)
+	if msg := avvisoArrayScartato(originale, tenuto); msg != "" {
+		t.Errorf("array conservato, nessun avviso atteso: %q", msg)
+	}
+	// Un array vuoto non e' una perdita.
+	vuoto := json.RawMessage(`{"numero":1,"eventi":[]}`)
+	if msg := avvisoArrayScartato(vuoto, json.RawMessage(`{"numero":1}`)); msg != "" {
+		t.Errorf("array vuoto, nessun avviso atteso: %q", msg)
+	}
+	// Una lista semplice non e' un envelope.
+	lista := json.RawMessage(`[{"numero":1}]`)
+	if msg := avvisoArrayScartato(lista, lista); msg != "" {
+		t.Errorf("lista semplice, nessun avviso atteso: %q", msg)
+	}
+}
+
+// Su `ddl get` data e numero vivono dentro `fields`: dire solo che non
+// esistono manda a cercare un campo che c'e', col nome del portale.
+func TestDoveVivono(t *testing.T) {
+	data := json.RawMessage(`{"docno":9513,"fields":{"Data":"27.01.26","Numero":"6030"},"body":"..."}`)
+
+	if got := doveVivono(data, []string{"data"}); len(got) != 1 || got[0] != "fields.Data" {
+		t.Errorf("doveVivono(data) = %v, atteso [fields.Data]", got)
+	}
+	if got := doveVivono(data, []string{"pippo"}); len(got) != 0 {
+		t.Errorf("un nome inventato non deve trovare nulla: %v", got)
+	}
+	if got := doveVivono(data, nil); len(got) != 0 {
+		t.Errorf("nessun nome ignorato, nessun path: %v", got)
 	}
 }

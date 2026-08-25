@@ -93,7 +93,8 @@ func newNovelWatchCmd(flags *rootFlags) *cobra.Command {
 
 			base := loadBaseline(path, query)
 			out := watchOutput{Query: query, BaselineDate: base.UpdatedAt, FirstRun: base.UpdatedAt == ""}
-			for _, wk := range works {
+			prog := newProgress(flags, "scanning works", len(works))
+			for i, wk := range works {
 				if !base.SeenIDs[wk.ID] {
 					if !out.FirstRun {
 						out.NewWorks = append(out.NewWorks, workBrief{
@@ -102,7 +103,9 @@ func newNovelWatchCmd(flags *rootFlags) *cobra.Command {
 					}
 					base.SeenIDs[wk.ID] = true
 				}
+				prog.update(i + 1)
 			}
+			prog.done()
 			out.NewCount = len(out.NewWorks)
 			out.TrackedTotal = len(base.SeenIDs)
 			base.UpdatedAt = time.Now().UTC().Format(time.RFC3339)

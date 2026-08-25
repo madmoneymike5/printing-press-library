@@ -26,6 +26,15 @@ type driftOutput struct {
 	Note       string       `json:"note,omitempty"`
 }
 
+// validateDriftSpan enforces that both bounds are set and the analysis span is
+// at least 2 years — the midpoint split needs a non-empty year on each side.
+func validateDriftSpan(fromYear, toYear int) error {
+	if fromYear == 0 || toYear == 0 || toYear < fromYear+2 {
+		return usageErr(fmt.Errorf("drift requires --from and --to with a span of at least 2 years (got --from %d --to %d): a shorter span leaves the early window empty", fromYear, toYear))
+	}
+	return nil
+}
+
 func newNovelDriftCmd(flags *rootFlags) *cobra.Command {
 	var fromYear, toYear, limit int
 
@@ -49,9 +58,9 @@ func newNovelDriftCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if fromYear == 0 || toYear == 0 || toYear < fromYear+2 {
+			if err := validateDriftSpan(fromYear, toYear); err != nil {
 				_ = cmd.Usage()
-				return usageErr(fmt.Errorf("--from and --to are required and the span must be at least 2 years (--to >= --from+2)"))
+				return err
 			}
 			ctx, cancel := boundCtx(cmd.Context(), flags)
 			defer cancel()
@@ -59,6 +68,9 @@ func newNovelDriftCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Integer division is safe here: validateDriftSpan guarantees
+			// toYear >= fromYear+2, so mid >= fromYear+1 and the early window
+			// [fromYear, mid-1] always spans at least one full year.
 			mid := (fromYear + toYear) / 2
 			earlyFilter := fmt.Sprintf("from_publication_date:%d-01-01,to_publication_date:%d-12-31", fromYear, mid-1)
 			lateFilter := fmt.Sprintf("from_publication_date:%d-01-01,to_publication_date:%d-12-31", mid, toYear)
@@ -109,8 +121,8 @@ func newNovelDriftCmd(flags *rootFlags) *cobra.Command {
 			return emit(cmd, flags, out, func(w io.Writer) { renderDrift(w, out) })
 		},
 	}
-	cmd.Flags().IntVar(&fromYear, "from", 0, "start year of the span (required)")
-	cmd.Flags().IntVar(&toYear, "to", 0, "end year of the span (required)")
+	cmd.Flags().IntVar(&fromYear, "from", 0, "start year of the span (required; the span must cover at least 2 years)")
+	cmd.Flags().IntVar(&toYear, "to", 0, "end year of the span (required; must be at least --from + 2)")
 	cmd.Flags().IntVar(&limit, "limit", 10, "number of emerging/fading subtopics to show")
 	return cmd
 }

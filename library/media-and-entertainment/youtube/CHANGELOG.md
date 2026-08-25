@@ -2,6 +2,14 @@
 
 This file is maintained by printing-press-library release automation. Do not hand-edit release sections in normal PRs.
 
+## 2026.8.3 - 2026-08-21
+
+- feat(youtube): reprint as competitor-monitoring machine — analyst databank, watch/monitor/velocity/growth/breakouts, comment mining, key ring (#1755).
+
+## 2026.8.2 - 2026-08-17
+
+- fix(catalog): align Go fallback docs with toolchain floor (#1735).
+
 ## 2026.8.1 - 2026-08-10
 
 - feat(youtube): fail fast on missing search key; transcript lang fallback + --format; add search/--limit aliases (#1631).

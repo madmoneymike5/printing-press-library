@@ -36,7 +36,7 @@ This skill drives the `granola-pp-cli` binary. **You must verify the CLI is inst
 2. Verify: `granola-pp-cli --version`
 3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
 
-If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.5 or newer):
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.6 or newer):
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/productivity/granola/cmd/granola-pp-cli@latest
@@ -197,6 +197,25 @@ Both of these originate in Granola desktop's own cache. `chat list` reads the th
   ```bash
   granola-pp-cli calendar overlay --week 2026-05-11 --missed-only --json
   ```
+
+### Direct SQL against the local store
+
+The local store is plain SQLite at `~/.local/share/granola-pp-cli/data.db`, and querying it directly is a supported pattern for questions the commands don't cover. Read the schema first instead of guessing column names — the two classic wrong guesses are `meetings.source` (the real column is `row_source`) and `folders.name` (the real column is `title`):
+
+```bash
+# Path, tables, and columns — the contract your SQL runs against.
+# Reads the CLI's own store, WAL-current and without writing to it.
+granola-pp-cli db schema
+
+# Machine-readable, for scripts
+granola-pp-cli db schema --json
+
+# Then query with confidence
+sqlite3 ~/.local/share/granola-pp-cli/data.db \
+  "select row_source, count(*) from meetings group by row_source;"
+```
+
+The main tables: `meetings`, `attendees`, `transcript_segments`, `folders` + `folder_memberships`, `panel_templates`, `recipes` + `recipes_usage`, `chat_threads` + `chat_messages`, and `sync_state`. Since schema v4, `row_source` (= cache|api) marks provenance on the catalog tables too — folders, panel templates, recipes — not just meetings, and folders carry `description` and `is_favourited`. `db schema` is the authoritative list; this paragraph is the orientation. Treat the store as read-only from SQL — writes belong to `sync` and `sync-api`.
 
 ### Pipeline hygiene
 - **`duplicates scan`** — Hash (title, date-bucket, attendee-email-set) across the cache and a meeting-transcripts repo to surface duplicates at scale.

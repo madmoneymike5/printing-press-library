@@ -33,15 +33,16 @@ func newNovelCommissioneDossierCmd(flags *rootFlags) *cobra.Command {
 			"  ars-sicilia-pp-cli commissione dossier \"inchiesta e vigilanza\" --legisl 18 --json",
 		Annotations: map[string]string{
 			"mcp:read-only": "true",
+			"pp:happy-args": "codcom-o-nome=SESTA;--legisl=18",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			if dryRunOK(flags) {
-				return nil
-			}
 			arg := strings.TrimSpace(strings.Join(args, " "))
+			if dryRunOK(flags) {
+				return emitCommissioneDossierDryRun(cmd, arg, flagLegisl)
+			}
 			return runCommissioneDossier(cmd, flags, arg, flagLegisl, flagLimit)
 		},
 	}
@@ -156,6 +157,56 @@ type dossierReport struct {
 	Sezioni  []dossierSection `json:"sezioni"`
 }
 
+// emitCommissioneDossierDryRun elenca le quattro richieste del dossier invece
+// di uscire in silenzio con exit 0. È l'anteprima che serve di più delle tre,
+// perché mostra la traduzione fatta da resolveDossierCommissione: lo stesso
+// argomento parte come `codcom` verso /bd/ e come ordinale a lettere verso
+// l'ISIS dei pareri. Chi vede mezze sezioni vuote legge qui, senza indovinare,
+// quale delle due forme non ha agganciato.
+func emitCommissioneDossierDryRun(cmd *cobra.Command, arg string, legisl int) error {
+	bdParams, isisName := resolveDossierCommissione(arg)
+	sezione := func(slug string, params map[string]string) (map[string]any, error) {
+		if legisl > 0 {
+			params["legisl"] = itoa(legisl)
+		}
+		return dryRunTargetBySlug(slug, params)
+	}
+	requests := []map[string]any{}
+	for _, sez := range dossierSezioni(bdParams, isisName) {
+		r, err := sezione(sez.slug, sez.params)
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			requests = append(requests, r)
+		}
+	}
+	return emitDryRunRequests(cmd, requests, fmt.Sprintf("l'argomento %q viaggia in due forme: %v verso il backend /bd/ (convocazioni, sommari) e %q verso l'ISIS di pareri e ddl. La sezione ddl è una ricerca testuale, non l'elenco dei ddl assegnati.", arg, bdParams, isisName))
+}
+
+// dossierSezione descrive una delle quattro ricerche del dossier.
+type dossierSezione struct {
+	slug   string
+	label  string
+	params map[string]string
+}
+
+// dossierSezioni elenca le quattro ricerche in un posto solo: l'anteprima e il
+// dossier vero devono partire dalle stesse, o la prima smette di descrivere la
+// seconda. È anche il punto in cui si vede la traduzione dell'argomento — i
+// parametri /bd/ da una parte, l'ordinale a lettere dall'altra — che è la
+// ragione per cui metà sezioni possono tornare vuote.
+func dossierSezioni(bdParams map[string]string, isisName string) []dossierSezione {
+	return []dossierSezione{
+		{"convocazioni", "convocazioni", copyParams(bdParams)},
+		{"sommari", "sommari", copyParams(bdParams)},
+		{"pareri", "pareri", map[string]string{"commissione": isisName}},
+		// La sezione ddl è una ricerca testuale, non l'elenco degli assegnati:
+		// l'archivio 221 non espone l'assegnazione come campo filtrabile.
+		{"ddl", "ddl_assegnati", map[string]string{"testo": isisName}},
+	}
+}
+
 func runCommissioneDossier(cmd *cobra.Command, flags *rootFlags, arg string, legisl, perSection int) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -223,16 +274,17 @@ func runCommissioneDossier(cmd *cobra.Command, flags *rootFlags, arg string, leg
 		}
 	}
 
-	section("convocazioni", "convocazioni", copyParams(bdParams))
-	section("sommari", "sommari", copyParams(bdParams))
-	section("pareri", "pareri", map[string]string{"commissione": isisName})
+	sezioni := dossierSezioni(bdParams, isisName)
+	for _, s := range sezioni[:3] {
+		section(s.slug, s.label, s.params)
+	}
 	// La sezione ddl è una ricerca testuale sul termine, non l'elenco dei ddl
 	// assegnati: l'archivio 221 non espone l'assegnazione come campo filtrabile.
 	// Resta perché utile, ma non concorre a decidere se la commissione esiste.
 	// Il termine cercato è isisName, non l'argomento grezzo: con "6" si
 	// cercherebbe la cifra 6 in tutti i ddl, mentre "SESTA" è la parola che
 	// compare davvero nell'iter ("Assegnato per esame Commissione SESTA").
-	section("ddl", "ddl_assegnati", map[string]string{"testo": isisName})
+	section(sezioni[3].slug, sezioni[3].label, sezioni[3].params)
 
 	// Solo le sezioni che filtrano davvero per commissione dicono se il termine
 	// ha agganciato qualcosa: la sezione ddl produce righe anche per un nome

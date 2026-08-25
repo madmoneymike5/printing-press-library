@@ -198,14 +198,16 @@ func classifyWorks(works []scWork) []scengine.Classification {
 }
 
 // scoreWorks builds the consensus engine input from works + per-work stance.
-func scoreWorks(works []scWork, claim string) ([]scengine.ScoredWork, []workStance) {
+// ctx bounds the optional per-work LLM stance calls so --timeout and Ctrl+C
+// propagate; the heuristic path never blocks on it.
+func scoreWorks(ctx context.Context, works []scWork, claim string) ([]scengine.ScoredWork, []workStance) {
 	scored := make([]scengine.ScoredWork, len(works))
 	stances := make([]workStance, len(works))
 	for i, w := range works {
 		cls := scengine.ClassifyDesign(w.Title, w.Abstract, w.Type, w.PubTypes)
-		st, conf := scengine.ClassifyStance(w.Title, w.Abstract, claim)
+		st, conf, stMethod := scengine.ClassifyStanceAuto(ctx, w.Title, w.Abstract, claim)
 		scored[i] = scengine.ScoredWork{Stance: st, StanceConf: conf, Design: cls.Design, CitedBy: w.CitedBy}
-		stances[i] = workStance{Work: w, Stance: st, Confidence: conf, Design: cls.Design, Method: cls.Method}
+		stances[i] = workStance{Work: w, Stance: st, Confidence: conf, Design: cls.Design, Method: cls.Method, StanceMethod: stMethod}
 	}
 	return scored, stances
 }
@@ -216,6 +218,46 @@ type workStance struct {
 	Confidence float64         `json:"stance_confidence"`
 	Design     scengine.Design `json:"design"`
 	Method     scengine.Method `json:"classification_method"`
+	// StanceMethod records how stance was derived: "heuristic" or
+	// "llm:<provider>". Empty for callers that don't run the dispatcher.
+	StanceMethod string `json:"stance_method,omitempty"`
+}
+
+// relevantToClaim reports whether a work's Title or Topic shares at least one
+// content token with the claim (stopword- and polarity-word-stripped, stemmed
+// to five characters so inflected forms match). Conservative by design: a
+// claim that yields no content tokens disables the gate (keep everything),
+// and a single token overlap is enough to keep a work — the gate exists to
+// drop clearly off-topic results (a crop-genetics paper under a
+// coffee/alertness claim), not to rank relevance.
+func relevantToClaim(claim string, w scWork) bool {
+	tokens := scengine.ClaimContentTokens(claim)
+	if len(tokens) == 0 {
+		return true
+	}
+	hay := strings.ToLower(w.Title + " " + w.Topic)
+	for _, tok := range tokens {
+		stem := tok
+		if len(stem) > 5 {
+			stem = stem[:5]
+		}
+		if strings.Contains(hay, stem) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterRelevant drops works that fail the relevance gate so they never reach
+// classification or scoring. Returns a new slice; the input is not mutated.
+func filterRelevant(claim string, works []scWork) []scWork {
+	kept := make([]scWork, 0, len(works))
+	for _, w := range works {
+		if relevantToClaim(claim, w) {
+			kept = append(kept, w)
+		}
+	}
+	return kept
 }
 
 // extractPMID pulls the numeric PMID out of an OpenAlex pmid URL.

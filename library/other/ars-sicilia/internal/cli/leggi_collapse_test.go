@@ -1,8 +1,11 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
 
-import icaro "github.com/mvanhorn/printing-press-library/library/other/ars-sicilia/internal/icaroclient"
+	icaro "github.com/mvanhorn/printing-press-library/library/other/ars-sicilia/internal/icaroclient"
+)
 
 func rigaLegge(legisl, atto, docum, data, titolo string) icaro.Record {
 	return icaro.Record{
@@ -78,5 +81,40 @@ func TestLeggiRawLimit(t *testing.T) {
 	// con ~25 righe-articolo l'una, 100 righe rendevano 4 leggi su 10 chieste.
 	if leggiRawLimit(10) <= 100 {
 		t.Errorf("tetto per 10 leggi = %d: troppo basso, è il caso che il fix esiste per risolvere", leggiRawLimit(10))
+	}
+}
+
+func TestNumeroDaAtto(t *testing.T) {
+	casi := map[string]string{
+		"L.R. 14":  "14",
+		"L.R. 1":   "1",
+		"":         "",
+		"L.R.":     "",
+		"L.R. 44o": "44",
+	}
+	for atto, want := range casi {
+		if got := numeroDaAtto(atto); got != want {
+			t.Errorf("numeroDaAtto(%q) = %q, atteso %q", atto, got, want)
+		}
+	}
+}
+
+// L'elenco aggregato può restare corto in due modi, e prima ne veniva detto
+// uno solo: col limite raggiunto il comando taceva e l'envelope dichiarava
+// `troncato: false`, cioè affermava una completezza mai verificata.
+func TestHintLeggiCorte(t *testing.T) {
+	if got := hintLeggiCorte(false, false, 60, 10, 10); got != "" {
+		t.Errorf("archivio esaurito: niente da dire, invece %q", got)
+	}
+	limite := hintLeggiCorte(true, false, 300, 10, 10)
+	if !strings.Contains(limite, "mostrate 10 leggi") || !strings.Contains(limite, "--limit") {
+		t.Errorf("limite raggiunto: l'avviso deve dirlo e indicare --limit: %q", limite)
+	}
+	corto := hintLeggiCorte(true, true, 300, 4, 10)
+	if !strings.Contains(corto, "solo 4 delle 10") {
+		t.Errorf("finestra righe esaurita: l'avviso deve contare le leggi mancanti: %q", corto)
+	}
+	if corto == limite {
+		t.Error("i due casi devono dire cose diverse")
 	}
 }

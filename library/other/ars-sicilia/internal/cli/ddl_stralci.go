@@ -49,20 +49,35 @@ Il verso opposto — da uno stralcio al suo ddl base — è nel campo 'stralcio'
 				}
 				return usageErr(fmt.Errorf("richiesti 2 argomenti: <legisl> e <numero>"))
 			}
-			legisl, err := atoiArg(args[0], "legisl")
-			if err != nil {
-				return err
-			}
-			numero, err := atoiArg(args[1], "numero")
-			if err != nil {
-				return err
+			legisl, errL := atoiArg(args[0], "legisl")
+			numero, errN := atoiArg(args[1], "numero")
+			if errL != nil || errN != nil {
+				// Come sugli altri comandi con posizionali: sotto --dry-run e
+				// sotto verify gli argomenti possono essere segnaposto, e una
+				// sonda non deve uscire in errore per averli letti.
+				if dryRunOK(flags) || cliIsVerify() {
+					return cmd.Help()
+				}
+				if errL != nil {
+					return errL
+				}
+				return errN
 			}
 			if dryRunOK(flags) {
-				return writeJSON(cmd.OutOrStdout(), map[string]any{
-					"archive": "ddl", "legisl": legisl, "numero": numero, "dry_run": true,
-					"isis_query": fmt.Sprintf("(%d.LEGISL) E (%d)", legisl, numero),
-					"nota":       "cerca il numero base come testo libero: il riferimento dello stralcio lo contiene",
-				})
+				// La query NON si riscrive a mano: si costruisce con gli stessi
+				// parametri che runDdlStralci passa a Search. Scritta a mano
+				// coincideva, ma nulla la teneva agganciata — e un'anteprima
+				// libera di divergere dal percorso vivo e' il difetto che
+				// questa CLI ha appena finito di togliersi di dosso.
+				target, terr := dryRunTargetBySlug("ddl", stralciSearchParams(legisl, numero))
+				if terr != nil {
+					return terr
+				}
+				if target == nil {
+					return fmt.Errorf("archivio ddl non disponibile")
+				}
+				return emitDryRunRequests(cmd, []map[string]any{target},
+					"cerca il numero base come testo libero: il riferimento dello stralcio lo contiene. Le righe candidate vengono poi filtrate leggendo il campo Riferimenti di ciascuna.")
 			}
 			return runDdlStralci(cmd, flags, legisl, numero, flagLimit)
 		},
@@ -93,6 +108,13 @@ type stralciReport struct {
 // stralcio porta ("ddl n. 1030/A Stralcio IV") contiene il numero base, quindi
 // il free-text sul numero recupera l'intera famiglia. Attenzione: cercare la
 // forma con la barra ("1030/A") restituisce zero — la barra rompe la query ISIS.
+// stralciSearchParams sono i parametri della ricerca degli stralci, in un posto
+// solo: l'anteprima --dry-run e la ricerca vera devono partire dagli stessi, o
+// la prima smette di descrivere la seconda senza che nulla lo segnali.
+func stralciSearchParams(legisl, numero int) map[string]string {
+	return map[string]string{"legisl": itoa(legisl), "testo": itoa(numero)}
+}
+
 func runDdlStralci(cmd *cobra.Command, flags *rootFlags, legisl, numero, limit int) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -110,7 +132,7 @@ func runDdlStralci(cmd *cobra.Command, flags *rootFlags, legisl, numero, limit i
 		limit = 30
 	}
 	recs, err := c.Search(ctx, *arc, icaro.SearchOptions{
-		Params: normalizeParams(*arc, map[string]string{"legisl": itoa(legisl), "testo": itoa(numero)}),
+		Params: normalizeParams(*arc, stralciSearchParams(legisl, numero)),
 		Limit:  limit,
 		// Icaro pagina ~10 righe: senza MaxPages la ricerca si ferma alla
 		// prima e gli stralci oltre la decima riga non arrivano mai.

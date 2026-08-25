@@ -69,7 +69,8 @@ func newNovelReproducibilityCmd(flags *rootFlags) *cobra.Command {
 			out := reproOutput{Query: query, Analyzed: len(works)}
 			counts := make([]int, len(reproProbes))
 			anySignal := 0
-			for _, wk := range works {
+			prog := newProgress(flags, "scanning works", len(works))
+			for wi, wk := range works {
 				hay := strings.ToLower(wk.Title + ". " + wk.Abstract)
 				hit := false
 				for i, p := range reproProbes {
@@ -81,7 +82,9 @@ func newNovelReproducibilityCmd(flags *rootFlags) *cobra.Command {
 				if hit {
 					anySignal++
 				}
+				prog.update(wi + 1)
 			}
+			prog.done()
 			for i, p := range reproProbes {
 				out.Signals = append(out.Signals, reproSignal{Signal: p.name, Works: counts[i]})
 			}

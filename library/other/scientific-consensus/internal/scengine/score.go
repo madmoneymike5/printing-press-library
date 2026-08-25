@@ -4,21 +4,21 @@ import "math"
 
 // ScoredWork is the per-work input to the consensus engine.
 type ScoredWork struct {
-	Stance      Stance
-	StanceConf  float64
-	Design      Design
-	CitedBy     int
+	Stance     Stance
+	StanceConf float64
+	Design     Design
+	CitedBy    int
 }
 
 // Verdict summarizes the overall consensus direction.
 type Verdict string
 
 const (
-	VerdictSupports      Verdict = "evidence-supports"
-	VerdictRefutes       Verdict = "evidence-refutes"
-	VerdictMixed         Verdict = "evidence-mixed"
-	VerdictInconclusive  Verdict = "inconclusive"
-	VerdictInsufficient  Verdict = "insufficient-evidence"
+	VerdictSupports     Verdict = "evidence-supports"
+	VerdictRefutes      Verdict = "evidence-refutes"
+	VerdictMixed        Verdict = "evidence-mixed"
+	VerdictInconclusive Verdict = "inconclusive"
+	VerdictInsufficient Verdict = "insufficient-evidence"
 )
 
 // EvidenceStrength is a coarse label for how strong the underlying evidence base is.
@@ -34,8 +34,8 @@ const (
 // ConsensusResult is the consensus engine's output.
 type ConsensusResult struct {
 	Verdict          Verdict          `json:"verdict"`
-	ConsensusScore   float64          `json:"consensus_score"`   // -1..1 (refute..support), tier+citation weighted
-	Confidence       float64          `json:"confidence"`        // 0..1
+	ConsensusScore   float64          `json:"consensus_score"` // -1..1 (refute..support), tier+citation weighted
+	Confidence       float64          `json:"confidence"`      // 0..1
 	EvidenceStrength EvidenceStrength `json:"evidence_strength"`
 	ApexDesign       Design           `json:"apex_design"`
 	StudyCount       int              `json:"study_count"`
@@ -44,11 +44,24 @@ type ConsensusResult struct {
 	Mixed            int              `json:"mixed"`
 	Inconclusive     int              `json:"inconclusive"`
 	TotalCitations   int              `json:"total_citations"`
+	// NearUnanimous flags a result so one-sided that the absence of dissent is
+	// itself suspicious — usually a sign that genuine debate was filtered out
+	// upstream rather than that the science is settled. Presentation-only: it
+	// never feeds back into Verdict, ConsensusScore, or Confidence.
+	NearUnanimous bool `json:"near_unanimous"`
 }
 
 // Consensus aggregates scored works into a tier- and citation-weighted verdict.
 func Consensus(works []ScoredWork) ConsensusResult {
-	res := ConsensusResult{StudyCount: len(works), Verdict: VerdictInsufficient, EvidenceStrength: StrengthVeryLow}
+	// ApexDesign is seeded explicitly: the zero value of Design is the empty
+	// string, and the len==0 early return below skips the ApexDesign() call
+	// that would otherwise fill it. Without the seed a zero-work result emits
+	// "apex_design": "" — not a design at all, and not something a consumer can
+	// map to a tier. Every non-empty corpus overwrites this below.
+	res := ConsensusResult{
+		StudyCount: len(works), Verdict: VerdictInsufficient,
+		EvidenceStrength: StrengthVeryLow, ApexDesign: DesignUnknown,
+	}
 	if len(works) == 0 {
 		return res
 	}
@@ -85,8 +98,9 @@ func Consensus(works []ScoredWork) ConsensusResult {
 
 	directional := res.Supporting + res.Refuting
 	res.Confidence = round2(confidence(res, directional))
-	res.EvidenceStrength = strength(res.ApexDesign, res.StudyCount, directional)
+	res.EvidenceStrength = strength(res.ApexDesign, res.StudyCount)
 	res.Verdict = verdict(res, directional)
+	res.NearUnanimous = nearUnanimous(res)
 	return res
 }
 
@@ -113,6 +127,34 @@ func verdict(r ConsensusResult, directional int) Verdict {
 	}
 }
 
+// phase4ConfidenceEnabled controls the dispersion penalty on confidence.
+// Always true in production; tests may toggle it.
+var phase4ConfidenceEnabled = true
+
+// dispersionWeight is how much of the confidence a fully divided corpus gives
+// up. Package-level and tunable after measurement; at 0.35 a corpus that
+// cancels out entirely keeps 65% of the confidence its volume and design would
+// otherwise earn. It is deliberately not 1.0 — study count and apex design are
+// still real signal even when the direction is contested.
+var dispersionWeight = 0.35
+
+// stanceDispersion measures how far the corpus is from speaking with one voice.
+// It returns 0.0 when every work points the same way and 1.0 when supporting
+// and refuting cancel out entirely. Unlike the agreement term it divides by the
+// TOTAL work count, so mixed and inconclusive works count as evidence of
+// uncertainty rather than being invisible.
+func stanceDispersion(supporting, refuting, mixed, inconclusive int) float64 {
+	total := supporting + refuting + mixed + inconclusive
+	if total == 0 {
+		return 0
+	}
+	net := supporting - refuting
+	if net < 0 {
+		net = -net
+	}
+	return 1 - float64(net)/float64(total)
+}
+
 func confidence(r ConsensusResult, directional int) float64 {
 	if r.StudyCount == 0 {
 		return 0
@@ -125,10 +167,23 @@ func confidence(r ConsensusResult, directional int) float64 {
 		agreement = math.Abs(float64(r.Supporting-r.Refuting)) / float64(directional)
 	}
 	conf := 0.45*volume + 0.30*apex + 0.25*agreement
+	// Dispersion penalty. The agreement term above sees only directional works,
+	// so a corpus of 1 supporting and 30 inconclusive scores a perfect 1.0 on
+	// agreement — a corpus that knows almost nothing looks unanimous. The
+	// penalty is applied multiplicatively, after the weighted sum, so it scales
+	// the whole confidence rather than competing with any single term for
+	// weight.
+	if phase4ConfidenceEnabled {
+		d := stanceDispersion(r.Supporting, r.Refuting, r.Mixed, r.Inconclusive)
+		conf *= 1 - dispersionWeight*d
+	}
 	return math.Min(0.97, conf)
 }
 
-func strength(apex Design, studies, directional int) EvidenceStrength {
+// strength labels the evidence base from design tier and volume alone.
+// Directional agreement is deliberately not an input — that signal is
+// carried by Confidence and Verdict.
+func strength(apex Design, studies int) EvidenceStrength {
 	rank := TierRank(apex)
 	switch {
 	case rank <= TierRank(DesignMetaAnalysis) && studies >= 5:
@@ -140,6 +195,27 @@ func strength(apex Design, studies, directional int) EvidenceStrength {
 	default:
 		return StrengthVeryLow
 	}
+}
+
+// nearUnanimousScore is the |ConsensusScore| at or above which a result with no
+// dissent at all is treated as suspiciously perfect rather than merely strong.
+const nearUnanimousScore = 0.98
+
+// nearUnanimous reports whether a result is so one-sided that a real
+// disagreement was probably filtered out before scoring. It requires ZERO
+// refuting AND ZERO mixed studies: a single mixed study is enough evidence that
+// dissent survived the pipeline, so the flag stays off. The check is symmetric
+// (|score| >= 0.98) because a unanimous refutation is exactly as suspicious as
+// a unanimous endorsement; the zero-dissent requirement means only one side can
+// ever be populated anyway.
+func nearUnanimous(r ConsensusResult) bool {
+	if r.Refuting > 0 || r.Mixed > 0 {
+		return false
+	}
+	if r.StudyCount == 0 {
+		return false
+	}
+	return math.Abs(r.ConsensusScore) >= nearUnanimousScore
 }
 
 func clamp01(v, floor float64) float64 {

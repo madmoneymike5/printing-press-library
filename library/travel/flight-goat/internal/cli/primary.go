@@ -22,14 +22,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// registerPrimaryCommands wires the three free-tier commands: search, dates,
-// and explore. These are added BEFORE the AeroAPI commands in root.go so they
-// appear at the top of --help, matching the user's stated priority of Google
-// Flights > Kayak > FlightAware.
+// registerPrimaryCommands wires the free-tier commands: search, dates,
+// explore, plus award (Seats.aero mileage availability — API key-gated) and
+// the multi-source fare commands. These are added BEFORE the AeroAPI commands
+// in root.go so they appear at the top of --help, matching the user's stated
+// priority of Google Flights > Kayak > FlightAware, with award alongside.
 func registerPrimaryCommands(rootCmd *cobra.Command, flags *rootFlags) {
 	rootCmd.AddCommand(newGfFlightsCmd(flags))
 	rootCmd.AddCommand(newGfDatesCmd(flags))
 	rootCmd.AddCommand(newSoarCmd(flags))
+	rootCmd.AddCommand(newAwardCmd(flags))
 	rootCmd.AddCommand(newKayakExploreCmd(flags))
 	rootCmd.AddCommand(newKayakLonghaulCmd(flags))
 }

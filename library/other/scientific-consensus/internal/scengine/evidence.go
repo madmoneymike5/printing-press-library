@@ -100,7 +100,7 @@ type Classification struct {
 // pubtypeMap maps authoritative publication-type labels (PubMed MeSH pubtype or
 // Semantic Scholar publicationTypes) to a Design. Keys are lowercased.
 var pubtypeMap = map[string]Design{
-	"meta-analysis":                DesignMetaAnalysis,
+	"meta-analysis":               DesignMetaAnalysis,
 	"systematic review":           DesignSystematicReview,
 	"randomized controlled trial": DesignRCT,
 	"controlled clinical trial":   DesignRCT,
@@ -142,7 +142,14 @@ func ClassifyDesign(title, abstract, openalexType string, pubTypes []string) Cla
 			}
 		}
 	}
-	if best != DesignUnknown {
+	// Every pubtype except the generic "review" names a specific design and is
+	// trusted outright. "review" is the one label a source can apply to a work
+	// whose own title and abstract call it a meta-analysis: measured on
+	// 10.3389/fnut.2022.1084455, a 55-RCT meta-analysis tagged only "Review",
+	// that costs the work eight tier points (9 -> 1). So when the generic label
+	// is all that came back, the heuristics still run and the stronger of the
+	// two answers wins.
+	if best != DesignUnknown && best != DesignNarrativeReview {
 		return Classification{Design: best, Tier: TierWeight(best), Method: MethodPubMedPubType}
 	}
 
@@ -150,8 +157,15 @@ func ClassifyDesign(title, abstract, openalexType string, pubTypes []string) Cla
 	hay := strings.ToLower(title + ". " + abstract)
 	for _, t := range heuristicTiers {
 		if t.re.MatchString(hay) {
-			return Classification{Design: t.design, Tier: TierWeight(t.design), Method: MethodHeuristic}
+			if TierRank(t.design) < bestRank {
+				return Classification{Design: t.design, Tier: TierWeight(t.design), Method: MethodHeuristic}
+			}
+			break
 		}
+	}
+	// The generic pubtype stands when the heuristics found nothing stronger.
+	if best != DesignUnknown {
+		return Classification{Design: best, Tier: TierWeight(best), Method: MethodPubMedPubType}
 	}
 
 	// 3. Coarse OpenAlex type fallback.

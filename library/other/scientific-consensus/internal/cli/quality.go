@@ -71,7 +71,8 @@ func newNovelQualityCmd(flags *rootFlags) *cobra.Command {
 			out := qualityOutput{Query: query, Analyzed: len(works), GradeCounts: map[string]int{}}
 			scored := make([]qualityWork, 0, len(works))
 			var sum float64
-			for _, wk := range works {
+			prog := newProgress(flags, "grading works", len(works))
+			for i, wk := range works {
 				cls := scengine.ClassifyDesign(wk.Title, wk.Abstract, wk.Type, wk.PubTypes)
 				score := qualityScore(cls.Design, wk.CitedBy, wk.Venue, wk.Abstract)
 				g := grade(score)
@@ -81,7 +82,9 @@ func newNovelQualityCmd(flags *rootFlags) *cobra.Command {
 					Title: wk.Title, Year: wk.Year, DOI: wk.DOI, Design: cls.Design,
 					CitedBy: wk.CitedBy, Venue: wk.Venue, Score: score, Grade: g,
 				})
+				prog.update(i + 1)
 			}
+			prog.done()
 			if len(scored) > 0 {
 				out.MeanScore = round1(sum / float64(len(scored)))
 			}

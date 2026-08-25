@@ -77,7 +77,7 @@ npx -y @mvanhorn/printing-press-library install flight-goat --agent claude-code 
 
 ### Without Node (Go fallback)
 
-If `npx` isn't available (no Node, offline), install the CLI directly via Go (requires Go 1.26.5 or newer):
+If `npx` isn't available (no Node, offline), install the CLI directly via Go (requires Go 1.26.6 or newer):
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/travel/flight-goat/cmd/flight-goat-pp-cli@latest
@@ -183,6 +183,14 @@ Get your API key from your API provider's developer portal. The key typically lo
 export FLIGHT_GOAT_API_KEY="<paste-your-key>"
 ```
 
+The `award` command uses a separate Seats.aero Partner API key, not `FLIGHT_GOAT_API_KEY`:
+
+```bash
+export SEATS_AERO_API_KEY="<your-seats-aero-pro-key>"
+```
+
+Seats.aero Pro users can generate one under their Settings → API tab; cached search (the endpoint `award` uses) is Pro-eligible, while live search requires a commercial agreement and is intentionally not exposed.
+
 To persist credentials, use `flight-goat-pp-cli auth set-token <token>`. Stored secrets live in `credentials.toml` under the data directory, not in `config.toml`.
 
 ### 3. Verify Setup
@@ -262,9 +270,10 @@ The headline commands query consumer fare sources directly — no `FLIGHT_GOAT_A
 - **`flight-goat-pp-cli dates <origin> <destination>`** - Cheapest-date scan for a route across a travel window.
 - **`flight-goat-pp-cli explore <airport>`** / **`flight-goat-pp-cli longhaul <airport>`** - Kayak nonstop and long-haul route discovery.
 - **`flight-goat-pp-cli soar <origin> <destination> <date>`** - FlySoar (Duffel NDC/GDS) second price opinion with a booking handoff.
+- **`flight-goat-pp-cli award <origin> <destination> [--from YYYY-MM-DD --to YYYY-MM-DD]`** - Seats.aero award (mileage) availability across cabin classes (economy/premium/business/first). Requires `SEATS_AERO_API_KEY` (Seats.aero Partner API key; cached search is Pro-eligible). Read-only — miles + taxes, no booking deeplinks.
 - **`flight-goat-pp-cli assess`** - Delayed-flight/rebooking decision support.
 
-Booking deeplinks in each result's `booking_urls` quote the same `--currency` the search ran in.
+Booking deeplinks in each result's `booking_urls` quote the same `--currency` the search ran in. `award` is the exception: it quotes mileage/points rather than cash and does not produce booking deeplinks.
 
 #### Bulk fare probes with built-in pacing
 
