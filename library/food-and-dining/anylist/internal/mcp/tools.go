@@ -221,7 +221,7 @@ func handleContext(_ context.Context, _ mcplib.CallToolRequest) (*mcplib.CallToo
 		"archetype":   "content",
 		"tool_count":  64,
 		// tool_surface tells agents which surface a capability lives on.
-		"tool_surface": "MCP exposes typed endpoint tools plus a runtime mirror of user-facing CLI commands. Endpoint tools keep typed schemas; command-mirror tools shell out to the companion anylist-pp-cli binary.",
+		"tool_surface": "MCP exposes anylist_search + anylist_execute over explicitly read-only endpoints (GET lookups and safe POST data-fetch routes only) plus a runtime mirror of user-facing CLI commands. anylist_execute fails closed before any request for mutation or unclassified endpoints; writes must go through the command-mirror tools, which shell out to the companion anylist-pp-cli binary that owns preview/apply, read-after-write verification, and cache synchronization.",
 		"auth": map[string]any{
 			"type": "bearer_token",
 			"env_vars": []map[string]any{
