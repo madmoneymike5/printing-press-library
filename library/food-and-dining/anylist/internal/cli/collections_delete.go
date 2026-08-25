@@ -50,7 +50,11 @@ func newCollectionsDeleteCmd(flags *rootFlags) *cobra.Command {
 			if err := anylist.New(cfg).RemoveRecipeCollection(ctx, recipeDataID, collection); err != nil {
 				return err
 			}
-			if err := syncStoreFromLive(ctx, cfg, st); err != nil {
+			verifiedData, err := verifyLiveRecipeCollectionDeleted(ctx, cfg, collection.GetIdentifier())
+			if err != nil {
+				return err
+			}
+			if err := st.SyncFromUserData(verifiedData); err != nil {
 				return fmt.Errorf("refreshing data after deleting collection: %w", err)
 			}
 			if flags.asJSON {

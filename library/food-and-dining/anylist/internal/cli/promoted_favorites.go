@@ -66,5 +66,7 @@ func newFavoritesPromotedCmd(flags *rootFlags) *cobra.Command {
 			return tw.Flush()
 		},
 	}
+	cmd.AddCommand(newStarterListAddCmd(flags, starterListFavorites))
+	cmd.AddCommand(newStarterListRemoveCmd(flags, starterListFavorites))
 	return cmd
 }

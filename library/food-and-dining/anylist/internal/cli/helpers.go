@@ -93,12 +93,9 @@ type cliError struct {
 func (e *cliError) Error() string { return e.err.Error() }
 func (e *cliError) Unwrap() error { return e.err }
 
-func usageErr(err error) error     { return &cliError{code: 2, err: err} }
-func notFoundErr(err error) error  { return &cliError{code: 3, err: err} }
-func authErr(err error) error      { return &cliError{code: 4, err: err} }
-func apiErr(err error) error       { return &cliError{code: 5, err: err} }
-func configErr(err error) error    { return &cliError{code: 10, err: err} }
-func rateLimitErr(err error) error { return &cliError{code: 7, err: err} }
+func usageErr(err error) error  { return &cliError{code: 2, err: err} }
+func authErr(err error) error   { return &cliError{code: 4, err: err} }
+func configErr(err error) error { return &cliError{code: 10, err: err} }
 
 // dryRunOK reports whether the command should short-circuit without doing any
 // real work because --dry-run was set. The verify pipeline probes hand-written
@@ -133,50 +130,6 @@ func writeNoop(flags *rootFlags, reason, prose string) error {
 	}
 	fmt.Fprintln(os.Stderr, prose)
 	return nil
-}
-
-func writeAPIErrorEnvelope(flags *rootFlags, err error, code int) {
-	if flags == nil || !flags.asJSON {
-		return
-	}
-	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
-		"error": err.Error(),
-		"code":  code,
-	})
-}
-
-// classifyAPIError maps API errors to structured exit codes with actionable hints.
-func classifyAPIError(err error, flags *rootFlags) error {
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "HTTP 409"):
-		if flags != nil && flags.idempotent {
-			return writeNoop(flags, "already_exists", "already exists (no-op)")
-		}
-		classified := apiErr(err)
-		writeAPIErrorEnvelope(flags, classified, ExitCode(classified))
-		return classified
-	case strings.Contains(msg, "HTTP 400") && cliutil.LooksLikeAuthError(msg):
-		return authErr(fmt.Errorf("%w\nhint: the API rejected the request — this usually means auth is missing or invalid."+
-			"\n      Set your API key: export ANYLIST_ACCESS_TOKEN=<your-key>"+
-			"\n      Run 'anylist-pp-cli doctor' to check auth status."+
-			"\n      Response: "+cliutil.SanitizeErrorBody(msg), err))
-	case strings.Contains(msg, "HTTP 401"):
-		return authErr(fmt.Errorf("%w\nhint: check your token. Set it with: anylist-pp-cli auth set-token <token>"+
-			"\n      or: export ANYLIST_ACCESS_TOKEN=<your-token>"+
-			"\n      Run 'anylist-pp-cli doctor' to check auth status.", err))
-	case strings.Contains(msg, "HTTP 403"):
-		return authErr(fmt.Errorf("%w\nhint: permission denied. Your credentials are valid but lack access to this resource."+
-			"\n      Check that your API key has the required permissions."+
-			"\n      Set it with: export ANYLIST_ACCESS_TOKEN=<your-key>"+
-			"\n      Run 'anylist-pp-cli doctor' to check auth status.", err))
-	case strings.Contains(msg, "HTTP 404"):
-		return notFoundErr(fmt.Errorf("%w\nhint: resource not found. Run the 'list' command to see available items", err))
-	case strings.Contains(msg, "HTTP 429"):
-		return rateLimitErr(err)
-	default:
-		return apiErr(err)
-	}
 }
 
 func truncate(s string, max int) string {
@@ -247,9 +200,7 @@ func newTabWriter(w io.Writer) *tabwriter.Writer {
 
 // paginatedGet fetches pages and concatenates array results. The headers
 // argument carries per-endpoint required headers that must be sent on every
-// page request, including the first; pass nil when the endpoint has no
-// per-endpoint header overrides. Example: paginatedGet(c, "/items", params,
-// nil, true, "cursor", "meta.next_cursor", "has_more") fetches all pages.
+// page request, including the first.
 func paginatedGet(c interface {
 	GetWithHeaders(path string, params map[string]string, headers map[string]string) (json.RawMessage, error)
 }, path string, params map[string]string, headers map[string]string, fetchAll bool, cursorParam, nextCursorPath, hasMoreField string) (json.RawMessage, error) {
@@ -262,7 +213,6 @@ func paginatedGet(c interface {
 			clean[k] = v
 		}
 	}
-
 	if !fetchAll {
 		data, err := c.GetWithHeaders(path, clean, headers)
 		if err != nil {
@@ -271,16 +221,8 @@ func paginatedGet(c interface {
 		emitTruncationWarning(data, nextCursorPath, hasMoreField)
 		return data, nil
 	}
-
 	allItems := make([]json.RawMessage, 0)
-	page := 0
 	for {
-		page++
-		if humanFriendly {
-			fmt.Fprintf(os.Stderr, "fetching page %d...\n", page)
-		} else {
-			fmt.Fprintf(os.Stderr, `{"event":"page_fetch","page":%d}`+"\n", page)
-		}
 		data, err := c.GetWithHeaders(path, clean, headers)
 		if err != nil {
 			return nil, err
@@ -288,39 +230,33 @@ func paginatedGet(c interface {
 		var items []json.RawMessage
 		if json.Unmarshal(data, &items) == nil {
 			allItems = append(allItems, items...)
-			// PATCH: Flat-array responses carry no in-body cursor, so one page is authoritative.
 			break
 		}
 		var obj map[string]json.RawMessage
-		if json.Unmarshal(data, &obj) == nil {
-			if nested, ok := extractPaginatedItems(obj); ok {
-				allItems = append(allItems, nested...)
-			}
-			if nextCursorPath != "" {
-				if tokenRaw, ok := rawAtPath(obj, nextCursorPath); ok {
-					var token string
-					if json.Unmarshal(tokenRaw, &token) == nil && token != "" {
-						clean[cursorParam] = token
-						continue
-					}
+		if json.Unmarshal(data, &obj) != nil {
+			break
+		}
+		if nested, ok := extractPaginatedItems(obj); ok {
+			allItems = append(allItems, nested...)
+		}
+		if nextCursorPath != "" {
+			if tokenRaw, ok := rawAtPath(obj, nextCursorPath); ok {
+				var token string
+				if json.Unmarshal(tokenRaw, &token) == nil && token != "" {
+					clean[cursorParam] = token
+					continue
 				}
 			}
-			if hasMoreField != "" {
-				if moreRaw, ok := rawAtPath(obj, hasMoreField); ok {
-					var more bool
-					if json.Unmarshal(moreRaw, &more) == nil && more {
-						continue
-					}
+		}
+		if hasMoreField != "" {
+			if moreRaw, ok := rawAtPath(obj, hasMoreField); ok {
+				var more bool
+				if json.Unmarshal(moreRaw, &more) == nil && more {
+					continue
 				}
 			}
 		}
 		break
-	}
-
-	if humanFriendly {
-		fmt.Fprintf(os.Stderr, "fetched %d items across %d pages\n", len(allItems), page)
-	} else {
-		fmt.Fprintf(os.Stderr, `{"event":"complete","total":%d,"pages":%d}`+"\n", len(allItems), page)
 	}
 	result, _ := json.Marshal(allItems)
 	return json.RawMessage(result), nil
@@ -331,78 +267,53 @@ func emitTruncationWarning(data json.RawMessage, nextCursorPath, hasMoreField st
 		return
 	}
 	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
+	if json.Unmarshal(data, &obj) != nil {
 		return
 	}
 	var nextCursor string
-	if nextCursorPath != "" {
-		if tokenRaw, ok := rawAtPath(obj, nextCursorPath); ok {
-			_ = json.Unmarshal(tokenRaw, &nextCursor)
-		}
+	if raw, ok := rawAtPath(obj, nextCursorPath); ok {
+		_ = json.Unmarshal(raw, &nextCursor)
 	}
 	var hasMore bool
-	if hasMoreField != "" {
-		if moreRaw, ok := rawAtPath(obj, hasMoreField); ok {
-			_ = json.Unmarshal(moreRaw, &hasMore)
-		}
+	if raw, ok := rawAtPath(obj, hasMoreField); ok {
+		_ = json.Unmarshal(raw, &hasMore)
 	}
 	if nextCursor == "" && !hasMore {
 		return
 	}
-	if nextCursor != "" {
-		if humanFriendly {
-			fmt.Fprintf(os.Stderr, "warning: results truncated; more pages available. Re-run with --all to fetch every page.\n")
-		} else {
-			fmt.Fprintf(os.Stderr, `{"event":"truncated","hint":"pass --all to fetch every page"}`+"\n")
-		}
-		return
-	}
 	if humanFriendly {
-		fmt.Fprintf(os.Stderr, "warning: results truncated; more pages available.\n")
+		fmt.Fprintln(os.Stderr, "warning: results truncated; more pages available")
 	} else {
-		fmt.Fprintf(os.Stderr, `{"event":"truncated"}`+"\n")
+		fmt.Fprintln(os.Stderr, `{"event":"truncated"}`)
 	}
 }
 
 func extractPaginatedItems(obj map[string]json.RawMessage) ([]json.RawMessage, bool) {
 	for _, field := range []string{"data", "items", "results", "messages", "members", "values"} {
-		if arr, ok := obj[field]; ok {
-			var nested []json.RawMessage
-			if json.Unmarshal(arr, &nested) == nil {
-				return nested, true
+		if raw, ok := obj[field]; ok {
+			var items []json.RawMessage
+			if json.Unmarshal(raw, &items) == nil {
+				return items, true
 			}
 		}
-	}
-	var onlyArray []json.RawMessage
-	arrayCount := 0
-	for _, raw := range obj {
-		var candidate []json.RawMessage
-		if json.Unmarshal(raw, &candidate) == nil {
-			onlyArray = candidate
-			arrayCount++
-		}
-	}
-	if arrayCount == 1 {
-		return onlyArray, true
 	}
 	return nil, false
 }
 
 func rawAtPath(obj map[string]json.RawMessage, path string) (json.RawMessage, bool) {
-	if raw, ok := obj[path]; ok {
-		return raw, true
+	if path == "" {
+		return nil, false
 	}
 	current := obj
-	parts := strings.Split(path, ".")
-	for i, part := range parts {
+	for i, part := range strings.Split(path, ".") {
 		raw, ok := current[part]
 		if !ok {
 			return nil, false
 		}
-		if i == len(parts)-1 {
+		if i == len(strings.Split(path, "."))-1 {
 			return raw, true
 		}
-		if err := json.Unmarshal(raw, &current); err != nil {
+		if json.Unmarshal(raw, &current) != nil {
 			return nil, false
 		}
 	}
@@ -864,21 +775,6 @@ func suggestFlag(unknown string, cmd *cobra.Command) string {
 		check(f.Name)
 	})
 	return best
-}
-
-// wantsHumanTable returns true when output should be a human-friendly table.
-// Smart default: terminal=table, pipe=JSON.
-// - Human in terminal: isTerminal()=true → table
-// - Claude Code/Codex bash tool: stdout piped → JSON
-// - --json/--csv/--compact/--agent: machine format → JSON
-func wantsHumanTable(w io.Writer, flags *rootFlags) bool {
-	if flags.asJSON || flags.csv || flags.compact || flags.quiet || flags.plain {
-		return false
-	}
-	if flags.selectFields != "" {
-		return false
-	}
-	return isTerminal(w)
 }
 
 func printAutoTable(w io.Writer, items []map[string]any) error {

@@ -48,23 +48,27 @@ func newCollectionsCreateCmd(flags *rootFlags) *cobra.Command {
 			collection := &pb.PBRecipeCollection{
 				Identifier:         newRecipeID(),
 				Name:               bodyName,
-				Timestamp:          float64(time.Now().UnixMilli()),
+				Timestamp:          float64(time.Now().Unix()),
 				CollectionSettings: &pb.PBRecipeCollectionSettings{},
 			}
 			if err := anylist.New(cfg).SaveRecipeCollection(ctx, recipeDataID, collection); err != nil {
 				return err
 			}
-			if err := syncStoreFromLive(ctx, cfg, st); err != nil {
+			verifiedData, verified, err := verifyLiveRecipeCollection(ctx, cfg, collection)
+			if err != nil {
+				return err
+			}
+			if err := st.SyncFromUserData(verifiedData); err != nil {
 				return fmt.Errorf("refreshing data after creating collection: %w", err)
 			}
 			if flags.asJSON {
 				return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
 					"created":    true,
-					"collection": bodyName,
-					"id":         collection.Identifier,
+					"collection": verified.GetName(),
+					"id":         verified.GetIdentifier(),
 				}, flags)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created collection %q\n", bodyName)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created collection %q\n", verified.GetName())
 			return nil
 		},
 	}

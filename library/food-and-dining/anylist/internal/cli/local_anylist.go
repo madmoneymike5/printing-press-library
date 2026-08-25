@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,7 @@ func itemRowToPB(item *store.ItemRow, userID string) *pb.ListItem {
 		ListId:          item.ListID,
 		Name:            item.Name,
 		ProductUpc:      item.ProductUpc,
+		PackageSizePb:   item.PackageSize,
 		Quantity:        item.Quantity,
 		Details:         item.Details,
 		Checked:         item.Checked,
@@ -71,6 +73,8 @@ func itemRowToPB(item *store.ItemRow, userID string) *pb.ListItem {
 		UserId:          userID,
 		CategoryMatchId: item.CategoryMatchID,
 		StoreIds:        item.StoreIDs,
+		Prices:          item.Prices,
+		PhotoIds:        item.PhotoIDs,
 		ManualSortIndex: int32(item.SortIndex),
 	}
 }
@@ -176,6 +180,19 @@ func findLiveRecipeByName(userData *pb.PBUserDataResponse, name string) (*pb.PBR
 	return nil, fmt.Errorf("recipe %q not found", name)
 }
 
+func findLiveRecipeByID(userData *pb.PBUserDataResponse, recipeID string) (*pb.PBRecipe, bool) {
+	rdr := userData.GetRecipeDataResponse()
+	if rdr == nil {
+		return nil, false
+	}
+	for _, recipe := range rdr.GetRecipes() {
+		if recipe.GetIdentifier() == recipeID {
+			return recipe, true
+		}
+	}
+	return nil, false
+}
+
 func currentListFolderData(ctx context.Context, cfg *config.Config) (*pb.PBUserDataResponse, string, string, error) {
 	alClient := anylist.New(cfg)
 	userData, err := alClient.GetUserData(ctx)
@@ -208,6 +225,70 @@ func findLiveRecipeCollectionByName(userData *pb.PBUserDataResponse, name string
 	return nil, fmt.Errorf("recipe collection %q not found", name)
 }
 
+func findLiveRecipeCollectionByID(userData *pb.PBUserDataResponse, collectionID string) (*pb.PBRecipeCollection, bool) {
+	rdr := userData.GetRecipeDataResponse()
+	if rdr == nil {
+		return nil, false
+	}
+	for _, collection := range rdr.GetRecipeCollections() {
+		if collection.GetIdentifier() == collectionID {
+			return collection, true
+		}
+	}
+	return nil, false
+}
+
+func validateRecipeCollectionReadBack(expected, actual *pb.PBRecipeCollection) error {
+	if expected == nil || actual == nil {
+		return fmt.Errorf("collection update verification failed: collection was not returned")
+	}
+	if actual.GetIdentifier() != expected.GetIdentifier() {
+		return fmt.Errorf("collection update verification failed: ID read back as %q, want %q", actual.GetIdentifier(), expected.GetIdentifier())
+	}
+	if actual.GetName() != expected.GetName() {
+		return fmt.Errorf("collection update verification failed: name read back as %q, want %q", actual.GetName(), expected.GetName())
+	}
+	if !slices.Equal(actual.GetRecipeIds(), expected.GetRecipeIds()) {
+		return fmt.Errorf("collection update verification failed: recipe memberships did not read back")
+	}
+	expectedSettings := expected.GetCollectionSettings()
+	actualSettings := actual.GetCollectionSettings()
+	if expectedSettings.GetRecipesSortOrder() != actualSettings.GetRecipesSortOrder() ||
+		expectedSettings.GetShowOnlyRecipesWithNoCollection() != actualSettings.GetShowOnlyRecipesWithNoCollection() {
+		return fmt.Errorf("collection update verification failed: collection settings did not read back")
+	}
+	return nil
+}
+
+func verifyLiveRecipeCollection(ctx context.Context, cfg *config.Config, expected *pb.PBRecipeCollection) (*pb.PBUserDataResponse, *pb.PBRecipeCollection, error) {
+	if expected == nil || expected.GetIdentifier() == "" {
+		return nil, nil, fmt.Errorf("verifying collection update: expected collection ID is empty")
+	}
+	userData, err := anylist.New(cfg).GetUserData(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("verifying collection update: %w", err)
+	}
+	actual, found := findLiveRecipeCollectionByID(userData, expected.GetIdentifier())
+	if !found {
+		return nil, nil, fmt.Errorf("collection update verification failed: collection %q is not present", expected.GetIdentifier())
+	}
+	if err := validateRecipeCollectionReadBack(expected, actual); err != nil {
+		return nil, nil, err
+	}
+	return userData, actual, nil
+}
+
+func verifyLiveRecipeCollectionDeleted(ctx context.Context, cfg *config.Config, collectionID string) (*pb.PBUserDataResponse, error) {
+	userData, err := anylist.New(cfg).GetUserData(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("verifying collection deletion: %w", err)
+	}
+	if _, found := findLiveRecipeCollectionByID(userData, collectionID); found {
+		return nil, fmt.Errorf("collection deletion verification failed: collection %q is still present", collectionID)
+	}
+	return userData, nil
+}
+
 func findLiveListFolderByName(userData *pb.PBUserDataResponse, name string) (*pb.PBListFolder, error) {
 	lfr := userData.GetListFoldersResponse()
 	if lfr == nil {
@@ -225,6 +306,74 @@ func findLiveListFolderByName(userData *pb.PBUserDataResponse, name string) (*pb
 		}
 	}
 	return nil, fmt.Errorf("list folder %q not found", name)
+}
+
+func liveShoppingLists(userData *pb.PBUserDataResponse) []*pb.ShoppingList {
+	if userData == nil || userData.GetShoppingListsResponse() == nil {
+		return nil
+	}
+	slr := userData.GetShoppingListsResponse()
+	lists := make([]*pb.ShoppingList, 0, len(slr.GetNewLists())+len(slr.GetModifiedLists()))
+	lists = append(lists, slr.GetNewLists()...)
+	lists = append(lists, slr.GetModifiedLists()...)
+	return lists
+}
+
+func findLiveShoppingListByName(userData *pb.PBUserDataResponse, name string) (*pb.ShoppingList, error) {
+	lower := strings.ToLower(name)
+	lists := liveShoppingLists(userData)
+	for _, list := range lists {
+		if strings.EqualFold(list.GetName(), name) {
+			return list, nil
+		}
+	}
+	for _, list := range lists {
+		if strings.HasPrefix(strings.ToLower(list.GetName()), lower) {
+			return list, nil
+		}
+	}
+	for _, list := range lists {
+		if strings.Contains(strings.ToLower(list.GetName()), lower) {
+			return list, nil
+		}
+	}
+	return nil, fmt.Errorf("list %q not found", name)
+}
+
+func findLiveShoppingListByID(userData *pb.PBUserDataResponse, listID string) (*pb.ShoppingList, bool) {
+	for _, list := range liveShoppingLists(userData) {
+		if list.GetIdentifier() == listID {
+			return list, true
+		}
+	}
+	return nil, false
+}
+
+func findLiveItemByID(userData *pb.PBUserDataResponse, listID, itemID string) (*pb.ListItem, bool) {
+	list, found := findLiveShoppingListByID(userData, listID)
+	if !found {
+		return nil, false
+	}
+	for _, item := range list.GetItems() {
+		if item.GetIdentifier() == itemID {
+			return item, true
+		}
+	}
+	return nil, false
+}
+
+func verifyLiveShoppingList(userData *pb.PBUserDataResponse, requested *pb.ShoppingList) (*pb.ShoppingList, error) {
+	if requested == nil || requested.GetIdentifier() == "" {
+		return nil, fmt.Errorf("create verification failed: generated list ID is empty")
+	}
+	created, found := findLiveShoppingListByID(userData, requested.GetIdentifier())
+	if !found {
+		return nil, fmt.Errorf("create verification failed: list %q is not present", requested.GetName())
+	}
+	if !strings.EqualFold(created.GetName(), requested.GetName()) {
+		return nil, fmt.Errorf("create verification failed: list ID %q read back as %q, want %q", requested.GetIdentifier(), created.GetName(), requested.GetName())
+	}
+	return created, nil
 }
 
 func newRecipeID() string {

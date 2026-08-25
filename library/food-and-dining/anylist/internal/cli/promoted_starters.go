@@ -66,5 +66,7 @@ func newStartersPromotedCmd(flags *rootFlags) *cobra.Command {
 			return tw.Flush()
 		},
 	}
+	cmd.AddCommand(newStarterListAddCmd(flags, starterListUser))
+	cmd.AddCommand(newStarterListRemoveCmd(flags, starterListUser))
 	return cmd
 }

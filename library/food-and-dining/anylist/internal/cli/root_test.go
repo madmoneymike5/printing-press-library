@@ -18,6 +18,7 @@ import (
 
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/config"
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // TestIsCobraUsageError covers the six pre-RunE error shapes Cobra and
@@ -318,15 +319,69 @@ func TestMealShowValidatesExplicitDateRange(t *testing.T) {
 	}
 }
 
-func TestRecipesAddToListHasSingleDeduplicationFlag(t *testing.T) {
+func TestRecipesAddToListHasNoIngredientMatchingFlags(t *testing.T) {
 	t.Parallel()
 
 	cmd := newRecipesAddToListCmd(&rootFlags{})
 	if flag := cmd.Flags().Lookup("dedup"); flag != nil {
-		t.Fatalf("recipes add-to-list must not expose duplicate --dedup flag; got %q", flag.Name)
+		t.Fatalf("recipes add-to-list must not expose --dedup; got %q", flag.Name)
 	}
-	if flag := cmd.Flags().Lookup("merge"); flag == nil {
-		t.Fatal("recipes add-to-list must keep documented --merge flag")
+	if flag := cmd.Flags().Lookup("merge"); flag != nil {
+		t.Fatalf("recipes add-to-list must not expose semantic --merge; got %q", flag.Name)
+	}
+	if flag := cmd.Flags().Lookup("recipe-id"); flag == nil {
+		t.Fatal("recipes add-to-list must expose stable --recipe-id input")
+	}
+	if flag := cmd.Flags().Lookup("apply"); flag == nil {
+		t.Fatal("recipes add-to-list must expose explicit --apply write gate")
+	}
+}
+
+func TestRecipesBulkWritesFailClosed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cmd  func(*rootFlags) *cobra.Command
+		args []string
+	}{
+		{
+			name: "recipe",
+			cmd:  newRecipesAddToListCmd,
+			args: []string{"--recipe-id", "recipe-1", "--list", "Groceries", "--apply"},
+		},
+		{
+			name: "batch",
+			cmd:  newRecipesBatchAddCmd,
+			args: []string{"--recipes", "Meatloaf,Salad", "--list", "Groceries"},
+		},
+		{
+			name: "meal",
+			cmd:  newMealAddToListCmd,
+			args: []string{"--list", "Groceries", "--week"},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			cmd := test.cmd(&rootFlags{})
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "bulk") {
+				t.Fatalf("error = %v, want explicit bulk-write refusal", err)
+			}
+		})
+	}
+}
+
+func TestRecipeImportAddToListFailsClosedBeforeNetwork(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRecipesImportCmd(&rootFlags{configPath: filepath.Join(t.TempDir(), "config.toml")})
+	cmd.SetArgs([]string{"--url", "https://example.invalid/recipe", "--add-to-list", "Groceries"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--add-to-list is disabled") {
+		t.Fatalf("error = %v, want add-to-list safety refusal", err)
 	}
 }
 

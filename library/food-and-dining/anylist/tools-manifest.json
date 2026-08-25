@@ -30,14 +30,34 @@
   "tools": [
     {
       "name": "categories_list",
-      "description": "List all item categories. Returns array of Category.",
+      "description": "List all item categories (read-only; custom category writes are unsupported). Returns array of Category.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
     },
     {
+      "name": "export",
+      "description": "Export a complete AnyList protobuf snapshot as JSON. Optional: output path and gzip compression; without output, writes JSON to stdout.",
+      "method": "POST",
+      "path": "/data/user-data/get",
+      "params": [
+        {
+          "name": "output",
+          "type": "string",
+          "location": "body",
+          "description": "Output JSON path; omit to write to stdout"
+        },
+        {
+          "name": "gzip",
+          "type": "bool",
+          "location": "body",
+          "description": "Compress output with gzip; requires output"
+        }
+      ]
+    },
+    {
       "name": "collections_add",
-      "description": "Add a recipe to a collection. Required: collection, recipe. Returns the new OperationResult.",
+      "description": "Add a recipe to a collection, verify membership by fresh read-back, and sync the local cache. Required: collection, recipe.",
       "method": "POST",
       "path": "/data/user-recipe-data/update",
       "params": [
@@ -59,7 +79,7 @@
     },
     {
       "name": "collections_create",
-      "description": "Create a new recipe collection. Required: name. Returns the new RecipeCollection.",
+      "description": "Create a new recipe collection, verify it by fresh read-back, and sync the local cache. Required: name.",
       "method": "POST",
       "path": "/data/user-recipe-data/update",
       "params": [
@@ -74,7 +94,7 @@
     },
     {
       "name": "collections_delete",
-      "description": "Delete a recipe collection. Required: name. Returns the new OperationResult.",
+      "description": "Delete a recipe collection, verify its absence by fresh read-back, and sync the local cache. Required: name.",
       "method": "POST",
       "path": "/data/user-recipe-data/update",
       "params": [
@@ -96,7 +116,7 @@
     },
     {
       "name": "collections_remove",
-      "description": "Remove a recipe from a collection. Required: collection, recipe. Returns the new OperationResult.",
+      "description": "Remove a recipe from a collection, verify membership removal by fresh read-back, and sync the local cache. Required: collection, recipe.",
       "method": "POST",
       "path": "/data/user-recipe-data/update",
       "params": [
@@ -118,14 +138,39 @@
     },
     {
       "name": "favorites_list",
-      "description": "List favorite items across all lists. Returns array of ListItem.",
+      "description": "List favorite items across all lists. Favorite add/remove use explicit --apply and fresh read-after-write verification. Returns array of ListItem.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
     },
     {
+      "name": "favorites_add",
+      "description": "Preview or add an item to a favorite list; --apply and fresh read-after-write verification are required.",
+      "method": "POST",
+      "path": "/data/starter-lists/update",
+      "params": [
+        {"name": "list", "type": "string", "location": "body", "description": "Favorite list ID or linked shopping-list name", "required": true},
+        {"name": "name", "type": "string", "location": "body", "description": "Item name", "required": true},
+        {"name": "quantity", "type": "string", "location": "body", "description": "Optional item quantity"},
+        {"name": "details", "type": "string", "location": "body", "description": "Optional item details"},
+        {"name": "category", "type": "string", "location": "body", "description": "Optional item category"},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the mutation; preview is the default"}
+      ]
+    },
+    {
+      "name": "favorites_remove",
+      "description": "Preview or remove an item from a favorite list; --apply and fresh read-after-write verification are required.",
+      "method": "POST",
+      "path": "/data/starter-lists/update",
+      "params": [
+        {"name": "list", "type": "string", "location": "body", "description": "Favorite list ID or linked shopping-list name", "required": true},
+        {"name": "item", "type": "string", "location": "body", "description": "Item name or stable item ID", "required": true},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the mutation; preview is the default"}
+      ]
+    },
+    {
       "name": "folders_create",
-      "description": "Create a new list folder. Required: name. Returns the new ListFolder.",
+      "description": "Create a list folder after explicit --apply and fresh read-after-write verification. Required: name.",
       "method": "POST",
       "path": "/data/list-folders/update",
       "params": [
@@ -140,7 +185,7 @@
     },
     {
       "name": "folders_delete",
-      "description": "Delete a list folder. Required: name. Returns the new OperationResult.",
+      "description": "Delete an empty list folder after explicit --apply and fresh read-after-write verification. Non-empty folders are refused. Required: name.",
       "method": "POST",
       "path": "/data/list-folders/update",
       "params": [
@@ -154,15 +199,28 @@
       ]
     },
     {
+      "name": "folders_update",
+      "description": "Preview or rename/move/reorder a list folder; --apply and fresh read-after-write verification are required.",
+      "method": "POST",
+      "path": "/data/list-folders/update",
+      "params": [
+        {"name": "name", "type": "string", "location": "body", "description": "Current folder name", "required": true},
+        {"name": "new-name", "wire_name": "new_name", "type": "string", "location": "body", "description": "New folder name"},
+        {"name": "parent", "type": "string", "location": "body", "description": "Parent folder name or ID"},
+        {"name": "order", "type": "string", "location": "body", "description": "Comma-separated child folder/list names or IDs in desired order"},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the change; preview is the default"}
+      ]
+    },
+    {
       "name": "folders_list",
-      "description": "List all list folders. Returns array of ListFolder.",
+      "description": "List all list folders. Create/delete, rename, parent movement, and child ordering are live-supported with fresh verification. Returns array of ListFolder.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
     },
     {
       "name": "items_add",
-      "description": "Add an item to a shopping list. Required: list, item. Optional: quantity, notes, category, barcode, package size, and price metadata. Returns the new ListItem.",
+      "description": "Preview or create a new item on a shopping list; semantic duplicate selection is not performed. Required: list, item. Optional: quantity, notes, barcode, package_size, category, store, price, price_store, price_details, apply. All live writes require --apply and fresh live/cache read-back verification before success. Returns the new ListItem and item ID.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -198,7 +256,7 @@
           "name": "category",
           "type": "string",
           "location": "body",
-          "description": "Category to assign"
+          "description": "Category to assign after the base add; requires explicit apply and fresh live/cache read-back verification"
         },
         {
           "name": "barcode",
@@ -219,21 +277,33 @@
           "wire_name": "price",
           "type": "number",
           "location": "body",
-          "description": "Price metadata to attach to the item"
+          "description": "Store price to save after the base add; requires explicit apply and fresh live/cache read-back verification"
         },
         {
           "name": "price_store",
           "wire_name": "price_store",
           "type": "string",
           "location": "body",
-          "description": "Store name for the price metadata"
+          "description": "AnyList store ID associated with --price; requires --price and explicit apply"
         },
         {
           "name": "price_details",
           "wire_name": "price_details",
           "type": "string",
           "location": "body",
-          "description": "Optional price note or package detail"
+          "description": "Optional price note or package detail; requires --price and explicit apply"
+        },
+        {
+          "name": "store",
+          "type": "string",
+          "location": "body",
+          "description": "Store name or ID to assign after the base add; requires explicit apply and fresh live/cache read-back verification"
+        },
+        {
+          "name": "apply",
+          "type": "boolean",
+          "location": "body",
+          "description": "Enable category/store/price follow-up writes; preview remains the default"
         }
       ]
     },
@@ -317,7 +387,7 @@
     },
     {
       "name": "items_lookup",
-      "description": "Look up a packaged product by UPC/EAN in AnyList's product catalog. Required: barcode. Returns canonical name, package size, and catalog thumbnail when available.",
+      "description": "Look up a packaged product by UPC/EAN in AnyList's read-only product catalog. Required: barcode. Returns canonical name, package size, and catalog thumbnail when available; this is not a ZIP-aware Walmart price or availability query.",
       "method": "GET",
       "path": "/data/product-lookup/{barcode}",
       "params": [
@@ -407,7 +477,7 @@
     },
     {
       "name": "items_update",
-      "description": "Update an existing item's quantity, notes, category, or barcode. Required: list, item. Optional: quantity, notes, category, barcode. Returns the new ListItem.",
+      "description": "Preview or update an existing item by stable item_id (preferred) or exact list/name lookup. Optional: name, quantity, notes, barcode, package_size, category, clear_category, store, remove_store, price, price_store, price_details, clear_price, apply. All live writes require explicit apply, fresh live read-back verification, and cache sync only after verification. Semantic candidate selection is outside the press.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -424,8 +494,21 @@
           "wire_name": "name",
           "type": "string",
           "location": "body",
-          "description": "Item name to update",
-          "required": true
+          "description": "Item name to update when item_id is not supplied"
+        },
+        {
+          "name": "item_id",
+          "wire_name": "item_id",
+          "type": "string",
+          "location": "body",
+          "description": "Stable AnyList item ID to update; preferred for agent workflows"
+        },
+        {
+          "name": "name",
+          "wire_name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "New item name"
         },
         {
           "name": "quantity",
@@ -440,17 +523,79 @@
           "description": "New notes"
         },
         {
-          "name": "category",
-          "type": "string",
-          "location": "body",
-          "description": "New category"
-        },
-        {
           "name": "barcode",
           "wire_name": "product_upc",
           "type": "string",
           "location": "body",
           "description": "New UPC/EAN barcode"
+        },
+        {
+          "name": "upc",
+          "wire_name": "product_upc",
+          "type": "string",
+          "location": "body",
+          "description": "Alias for barcode"
+        },
+        {
+          "name": "package_size",
+          "wire_name": "package_size",
+          "type": "string",
+          "location": "body",
+          "description": "New package-size text, such as '12 count, 12 fl oz'"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "location": "body",
+          "description": "Category name or ID to assign; requires explicit apply"
+        },
+        {
+          "name": "clear_category",
+          "type": "bool",
+          "location": "body",
+          "description": "Clear the category match; requires explicit apply"
+        },
+        {
+          "name": "store",
+          "type": "string",
+          "location": "body",
+          "description": "Store name or ID to assign; requires explicit apply"
+        },
+        {
+          "name": "remove_store",
+          "type": "string",
+          "location": "body",
+          "description": "Store name or ID to remove; requires explicit apply"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable category/store/price live writes with fresh read-after-write verification"
+        },
+        {
+          "name": "price",
+          "type": "number",
+          "location": "body",
+          "description": "New item price; requires explicit apply"
+        },
+        {
+          "name": "price_store",
+          "type": "string",
+          "location": "body",
+          "description": "Optional store ID associated with price"
+        },
+        {
+          "name": "price_details",
+          "type": "string",
+          "location": "body",
+          "description": "Optional price details"
+        },
+        {
+          "name": "clear_price",
+          "type": "bool",
+          "location": "body",
+          "description": "Clear one store price when price_store is supplied, or every live store-specific price when omitted; requires explicit apply"
         }
       ]
     },
@@ -500,15 +645,55 @@
       ]
     },
     {
+      "name": "lists_rename",
+      "description": "Preview or rename a shopping list with explicit apply and fresh stable-ID verification. Required: name and new-name.",
+      "method": "POST",
+      "path": "/data/shopping-lists/update",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Current list name",
+          "required": true
+        },
+        {
+          "name": "new-name",
+          "wire_name": "new_name",
+          "type": "string",
+          "location": "body",
+          "description": "New list name",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the rename; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "lists_sharing_add",
+      "description": "Preview or invite an exact email to a shopping list; --apply is required and fresh read-back distinguishes pending from accepted.",
+      "method": "POST",
+      "path": "/data/shopping-lists/share-list",
+      "params": [
+        {"name": "list", "type": "string", "location": "body", "description": "List ID or exact list name", "required": true},
+        {"name": "email", "type": "string", "location": "body", "description": "Email address to invite", "required": true},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the invite; preview is the default"}
+      ]
+    },
+    {
       "name": "lists_list",
-      "description": "List all shopping lists. Returns array of ShoppingList.",
+      "description": "List all shopping lists. Rename, selected settings, notification locations, and invite-add are available through explicitly applied CLI commands with fresh verification. Returns array of ShoppingList.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
     },
     {
       "name": "lists_reset",
-      "description": "Clear all checked items from a list to prepare for the next shopping trip. Required: name. Optional: keep-unchecked (default: false). Returns the new OperationResult.",
+      "description": "Clear all checked items from a list to prepare for the next shopping trip. Required: name. Optional: keep-unchecked (default: false). Selected settings, notification locations, and invite-add are separate explicitly applied operations with fresh verification.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -530,7 +715,7 @@
     },
     {
       "name": "lists_settings",
-      "description": "View or update settings for a shopping list. Required: name. Returns the new ListSettings.",
+      "description": "View cached settings for a shopping list. Selected initial-save, clear, sort-order, boolean, and notification-location writes are exposed through explicitly applied CLI commands with fresh verification. Required: name. Returns ListSettings.",
       "method": "POST",
       "path": "/data/list-settings/update",
       "params": [
@@ -545,7 +730,7 @@
     },
     {
       "name": "meal_add",
-      "description": "Add an event to the meal planning calendar. Required: date. Optional: recipe, title, label (plus 1 more). Returns the new MealEvent.",
+      "description": "Preview by default or create a typed meal-calendar event with --apply; resolve IDs and verify fresh read-back before cache sync. Required with --apply: date. Optional: recipe, title, label, details, scale-factor.",
       "method": "POST",
       "path": "/data/meal-planning-calendar/update",
       "params": [
@@ -579,12 +764,25 @@
           "type": "string",
           "location": "body",
           "description": "Optional event details/notes"
+        },
+        {
+          "name": "scale-factor",
+          "wire_name": "scale_factor",
+          "type": "number",
+          "location": "body",
+          "description": "Positive finite recipe-serving scale factor; requires recipe"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Explicit live-write gate; create is verified by fresh user-data read-back before cache sync"
         }
       ]
     },
     {
       "name": "meal_add-to-list",
-      "description": "Add all recipe ingredients from the meal plan to a shopping list (idempotent, quantity-merging). Required: list. Optional: week (default: true), from, to (plus 1 more). Returns the new OperationResult.",
+      "description": "Preview meal-plan ingredients; live bulk writes are disabled. Use recipes_ingredients plus explicit item operations. Required for preview: list. Optional: week (default: true), from, to, dry_run.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -625,7 +823,7 @@
     },
     {
       "name": "meal_delete",
-      "description": "Delete a meal plan event. Required: event-id. Returns the new OperationResult.",
+      "description": "Preview by default or delete a typed meal-calendar event with --apply; verify absence by fresh read-back before cache sync. Required with --apply: event-id.",
       "method": "POST",
       "path": "/data/meal-planning-calendar/update",
       "params": [
@@ -636,6 +834,12 @@
           "location": "body",
           "description": "Event ID to delete",
           "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Explicit live-write gate; deletion is verified absent before cache sync"
         }
       ]
     },
@@ -693,8 +897,67 @@
       ]
     },
     {
+      "name": "meal_update",
+      "description": "Preview by default or update a typed meal-calendar event with --apply; omitted fields are preserved and fresh read-back is required. Required with --apply: event-id. Optional: date, recipe, title, label, details, scale-factor.",
+      "method": "POST",
+      "path": "/data/meal-planning-calendar/update",
+      "params": [
+        {
+          "name": "event-id",
+          "wire_name": "event_id",
+          "type": "string",
+          "location": "body",
+          "description": "Event ID to update",
+          "required": true
+        },
+        {
+          "name": "date",
+          "type": "string",
+          "location": "body",
+          "description": "Event date (YYYY-MM-DD)"
+        },
+        {
+          "name": "recipe",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe name to associate"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "location": "body",
+          "description": "Event title"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "location": "body",
+          "description": "Meal label"
+        },
+        {
+          "name": "details",
+          "type": "string",
+          "location": "body",
+          "description": "Optional event details or notes"
+        },
+        {
+          "name": "scale-factor",
+          "wire_name": "scale_factor",
+          "type": "number",
+          "location": "body",
+          "description": "Positive finite recipe-serving scale factor; omitted preserves the existing value"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Explicit live-write gate; updated fields are verified before cache sync"
+        }
+      ]
+    },
+    {
       "name": "recipes_add-to-list",
-      "description": "Add recipe ingredients to a shopping list, merging quantities for duplicates. Required: recipe, list. Optional: scale (default: 0), merge (default: true), dedup (default: true). Returns the new OperationResult.",
+      "description": "Deprecated bulk recipe-to-list command; it fails closed. Use recipes_ingredients plus explicit AI-selected item operations instead. Required for preview: one of recipe or recipe_id, and list. Optional: scale, apply.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -702,8 +965,13 @@
           "name": "recipe",
           "type": "string",
           "location": "body",
-          "description": "Recipe name",
-          "required": true
+          "description": "Recipe name; use recipe_id instead when available"
+        },
+        {
+          "name": "recipe_id",
+          "type": "string",
+          "location": "body",
+          "description": "Stable AnyList recipe ID (preferred for agent workflows); provide recipe or recipe_id, not both"
         },
         {
           "name": "list",
@@ -720,22 +988,16 @@
           "description": "Scale to this many servings before adding (0 = use recipe default)"
         },
         {
-          "name": "merge",
+          "name": "apply",
           "type": "bool",
           "location": "body",
-          "description": "Sum quantities for ingredients already on the list"
-        },
-        {
-          "name": "dedup",
-          "type": "bool",
-          "location": "body",
-          "description": "Skip ingredients already on the list (when --merge=false)"
+          "description": "Explicit live-write gate; without apply the command only previews the operation"
         }
       ]
     },
     {
       "name": "recipes_batch-add",
-      "description": "Add ingredients from multiple recipes to a list at once. Required: list, recipes. Optional: merge (default: true). Returns the new OperationResult.",
+      "description": "Deprecated bulk multi-recipe add; it fails closed. Use recipes_ingredients plus explicit AI-selected item operations instead. Required for preview: list, recipes.",
       "method": "POST",
       "path": "/data/shopping-lists/update",
       "params": [
@@ -753,12 +1015,6 @@
           "location": "body",
           "description": "Comma-separated list of recipe names",
           "required": true
-        },
-        {
-          "name": "merge",
-          "type": "bool",
-          "location": "body",
-          "description": "Sum quantities for duplicate ingredients"
         }
       ]
     },
@@ -807,6 +1063,41 @@
           "type": "string",
           "location": "body",
           "description": "Recipe notes"
+        }
+      ]
+    },
+    {
+      "name": "recipes_ingredients",
+      "description": "Show raw recipe ingredients and shopping-list candidate facts (read-only). Required: at least one recipe name or recipe_id. Optional: --list for target list candidates, --scale for serving count. Returns recipes with ingredients and optional candidate list items.",
+      "method": "POST",
+      "path": "/data/user-data/get",
+      "params": [
+        {
+          "name": "name",
+          "wire_name": "names",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe name (can be specified multiple times; use recipe_id when available)"
+        },
+        {
+          "name": "recipe_id",
+          "wire_name": "recipe_ids",
+          "type": "string",
+          "location": "body",
+          "description": "Stable AnyList recipe ID (can be specified multiple times; preferred for agent workflows)"
+        },
+        {
+          "name": "list",
+          "wire_name": "list",
+          "type": "string",
+          "location": "body",
+          "description": "Target shopping-list name to fetch candidates from"
+        },
+        {
+          "name": "scale",
+          "type": "integer",
+          "location": "body",
+          "description": "Target number of servings (scales ingredient quantities)"
         }
       ]
     },
@@ -895,8 +1186,308 @@
       ]
     },
     {
+      "name": "recipes_import_paprika",
+      "description": "Preview or apply gzip-compressed Paprika recipe archives/files. Required: input. Preview is the safe default; --apply is required before AnyList writes. Optional: update-existing.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/update",
+      "params": [
+        {
+          "name": "input",
+          "type": "string",
+          "location": "body",
+          "description": "Paprika archive, .paprikarecipe file, or directory",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the validated import; preview is the default"
+        },
+        {
+          "name": "update-existing",
+          "wire_name": "update_existing",
+          "type": "bool",
+          "location": "body",
+          "description": "Update matching recipes instead of skipping them"
+        }
+      ]
+    },
+    {
+      "name": "recipes_photo_attach",
+      "description": "Preview a validated recipe image offline or upload and attach it with explicit apply. Required: name, file. The recipe is read back by ID after save and verified photo IDs are persisted in the local cache.",
+      "method": "POST",
+      "path": "/data/photos/upload + /data/user-recipe-data/update",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Existing recipe name",
+          "required": true
+        },
+        {
+          "name": "file",
+          "type": "string",
+          "location": "body",
+          "description": "Image file to upload",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live upload and save; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_photo_clear",
+      "description": "Preview or remove one recipe photo, or all photos when photo_id is omitted. Explicit apply and fresh live read-back verification are required; verified photo IDs are persisted in the local cache.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/update",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Existing recipe name",
+          "required": true
+        },
+        {
+          "name": "photo-id",
+          "wire_name": "photo_id",
+          "type": "string",
+          "location": "body",
+          "description": "Remove only this photo; omit to remove all photos"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live recipe save; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_update",
+      "description": "Preview selected fields of an existing recipe by default without clearing omitted fields. One selector is required for apply: name or recipe. Optional: new-name, source-name, source-url, note, nutrition, servings, prep-time, cook-time, rating, and stdin-only ingredients/preparation_steps arrays. Pass apply=true or --apply to enable the typed save-recipe write, fresh read-back verification, and cache sync; use recipes_photo_attach or recipes_photo_clear for photo changes.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/update",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Existing recipe name to update",
+          "required": false
+        },
+        {
+          "name": "recipe",
+          "type": "string",
+          "location": "body",
+          "description": "Alternative existing recipe selector (--recipe or stdin JSON)"
+        },
+        {
+          "name": "new-name",
+          "wire_name": "new_name",
+          "type": "string",
+          "location": "body",
+          "description": "New recipe name"
+        },
+        {
+          "name": "source-name",
+          "wire_name": "source_name",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe source name"
+        },
+        {
+          "name": "source-url",
+          "wire_name": "source_url",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe source URL"
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe notes"
+        },
+        {
+          "name": "nutrition",
+          "wire_name": "nutritional_info",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe nutritional information"
+        },
+        {
+          "name": "servings",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe servings"
+        },
+        {
+          "name": "prep-time",
+          "wire_name": "prep_time",
+          "type": "integer",
+          "location": "body",
+          "description": "Prep time in minutes"
+        },
+        {
+          "name": "cook-time",
+          "wire_name": "cook_time",
+          "type": "integer",
+          "location": "body",
+          "description": "Cook time in minutes"
+        },
+        {
+          "name": "rating",
+          "type": "integer",
+          "location": "body",
+          "description": "Recipe rating"
+        },
+        {
+          "name": "ingredients",
+          "type": "array",
+          "location": "body",
+          "description": "Stdin-only replacement array of ingredient strings or objects"
+        },
+        {
+          "name": "preparation_steps",
+          "type": "array",
+          "location": "body",
+          "description": "Stdin-only replacement array of preparation-step strings"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live recipe save and fresh read-after-write verification; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_link",
+      "description": "Show a cached recipe's source URL (read-only local operation). Required: name.",
+      "method": "GET",
+      "path": "local-cache",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Recipe name",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "recipes_sharing_list",
+      "description": "List pending recipe-link requests, requests awaiting confirmation, and linked users from fresh AnyList user data.",
+      "method": "POST",
+      "path": "/data/user-data/get",
+      "params": []
+    },
+    {
+      "name": "recipes_sharing_request",
+      "description": "Preview or explicitly request recipe sharing with an exact email address. Required: email. Preview is the default; --apply is required and the pending request is verified by fresh read-back.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/request-recipe-link-v2",
+      "params": [
+        {
+          "name": "email",
+          "type": "string",
+          "location": "body",
+          "description": "Exact confirming email address",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live request; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_sharing_cancel",
+      "description": "Preview or explicitly cancel a pending recipe-link request by exact ID or confirming email. One selector is required; --apply is required and absence is verified.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/cancel-recipe-link-request",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "location": "body",
+          "description": "Exact pending request ID"
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "location": "body",
+          "description": "Exact confirming email"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live cancellation; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_sharing_accept",
+      "description": "Preview or explicitly accept an incoming recipe-link request by exact ID. --apply is required and linked-user presence is verified.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/accept-recipe-link-request",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "location": "body",
+          "description": "Exact incoming request ID",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live acceptance; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "recipes_sharing_unlink",
+      "description": "Preview or explicitly unlink a linked recipe-sharing user by exact user ID or email. One selector is required; --apply is required and absence is verified.",
+      "method": "POST",
+      "path": "/data/user-recipe-data/unlink-recipes",
+      "params": [
+        {
+          "name": "user-id",
+          "wire_name": "user_id",
+          "type": "string",
+          "location": "body",
+          "description": "Exact linked user ID"
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "location": "body",
+          "description": "Exact linked user email"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Enable the live unlink; preview is the default"
+        }
+      ]
+    },
+    {
       "name": "recipes_list",
-      "description": "List all recipes. Optional: limit (default: 0). Returns array of Recipe.",
+      "description": "List all recipes (read-only). Use the separate verified recipe-sharing endpoints for link requests and linked users. Optional: limit (default: 0). Returns array of Recipe.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": [
@@ -998,14 +1589,39 @@
     },
     {
       "name": "starters_list",
-      "description": "List starter list items. Returns array of ListItem.",
+      "description": "List starter list items. Starter add/remove use explicit --apply and fresh read-after-write verification. Returns array of ListItem.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
     },
     {
+      "name": "starters_add",
+      "description": "Preview or add an item to a user starter list; --apply and fresh read-after-write verification are required.",
+      "method": "POST",
+      "path": "/data/starter-lists/update",
+      "params": [
+        {"name": "list", "type": "string", "location": "body", "description": "Starter list ID or name", "required": true},
+        {"name": "name", "type": "string", "location": "body", "description": "Item name", "required": true},
+        {"name": "quantity", "type": "string", "location": "body", "description": "Optional item quantity"},
+        {"name": "details", "type": "string", "location": "body", "description": "Optional item details"},
+        {"name": "category", "type": "string", "location": "body", "description": "Optional item category"},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the mutation; preview is the default"}
+      ]
+    },
+    {
+      "name": "starters_remove",
+      "description": "Preview or remove an item from a user starter list; --apply and fresh read-after-write verification are required.",
+      "method": "POST",
+      "path": "/data/starter-lists/update",
+      "params": [
+        {"name": "list", "type": "string", "location": "body", "description": "Starter list ID or name", "required": true},
+        {"name": "item", "type": "string", "location": "body", "description": "Item name or stable item ID", "required": true},
+        {"name": "apply", "type": "bool", "location": "body", "description": "Apply the mutation; preview is the default"}
+      ]
+    },
+    {
       "name": "stores_list",
-      "description": "List all stores and store filters. Returns array of Store.",
+      "description": "List all stores and store filters (read-only; store/filter writes are unsupported). AnyList does not provide a ZIP-aware Walmart price or availability query. Returns array of Store.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []

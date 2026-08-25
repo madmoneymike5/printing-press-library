@@ -24,16 +24,15 @@ type rootFlags struct {
 	asJSON        bool
 	compact       bool
 	csv           bool
-	plain         bool
 	quiet         bool
 	dryRun        bool
 	noCache       bool
 	noInput       bool
-	idempotent    bool
 	yes           bool
 	agent         bool
 	selectFields  string
 	configPath    string
+	databasePath  string
 	profileName   string
 	deliverSpec   string
 	timeout       time.Duration
@@ -132,8 +131,8 @@ Highlights (not in the official API docs):
   • recipes search --ingredient   Find every recipe that uses a given ingredient instantly — no scrolling, no guessing.
   • recipes filter   Filter your entire recipe library by prep time, rating, serving count, and collection simultaneously.
   • lists by-store   Split a shopping list into per-store groups sorted by store aisle order — ready for multi-store shopping trips.
-  • meal add-to-list   Automatically build this week's shopping list from your meal plan — idempotent and safe to run on a schedule.
-  • recipes add-to-list   Add a recipe's ingredients to your list while avoiding duplicate unchecked items already on the target list.
+  • meal add-to-list   Preview meal-plan ingredients; bulk writes are disabled. Use raw facts plus explicit item operations.
+  • recipes add-to-list   Add a recipe's raw ingredients after the AI selects the exact stable-ID operation.
   • recipes missing   See exactly which ingredients you still need to buy before adding a recipe — skip what's already on your list.
   • meal summary   Render a Mon–Sun meal plan grid with Breakfast/Lunch/Dinner labels — pasteable into messages or scripts.
   • lists reset   Clear all checked items from a list in one command — idempotent and safe for cron to run after every shopping trip.
@@ -151,14 +150,13 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.PersistentFlags().BoolVar(&flags.asJSON, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&flags.compact, "compact", false, "Return only key fields (id, name, status, timestamps) for minimal token usage")
 	rootCmd.PersistentFlags().BoolVar(&flags.csv, "csv", false, "Output as CSV (table and array responses)")
-	rootCmd.PersistentFlags().BoolVar(&flags.plain, "plain", false, "Output as plain tab-separated text")
 	rootCmd.PersistentFlags().BoolVar(&flags.quiet, "quiet", false, "Bare output, one value per line")
 	rootCmd.PersistentFlags().StringVar(&flags.configPath, "config", "", "Config file path")
+	rootCmd.PersistentFlags().StringVar(&flags.databasePath, "db", "", "SQLite cache path for this invocation")
 	rootCmd.PersistentFlags().DurationVar(&flags.timeout, "timeout", 30*time.Second, "Request timeout")
 	rootCmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Show request without sending")
 	rootCmd.PersistentFlags().BoolVar(&flags.noCache, "no-cache", false, "Bypass response cache")
 	rootCmd.PersistentFlags().BoolVar(&flags.noInput, "no-input", false, "Disable all interactive prompts (for CI/agents)")
-	rootCmd.PersistentFlags().BoolVar(&flags.idempotent, "idempotent", false, "Treat already-existing create results as a successful no-op")
 	rootCmd.PersistentFlags().StringVar(&flags.selectFields, "select", "", "Comma-separated fields to include in output (e.g. --select id,name,status)")
 	rootCmd.PersistentFlags().BoolVar(&flags.yes, "yes", false, "Skip confirmation prompts (for agents and scripts)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
@@ -250,6 +248,7 @@ See README.md or the bundled SKILL.md for recipes.`,
 	rootCmd.AddCommand(newFeedbackCmd(flags))
 	rootCmd.AddCommand(newWhichCmd(flags))
 	rootCmd.AddCommand(newImportCmd(flags))
+	rootCmd.AddCommand(newExportCmd(flags))
 	rootCmd.AddCommand(newAPICmd(flags))
 	rootCmd.AddCommand(newCategoriesPromotedCmd(flags))
 	rootCmd.AddCommand(newFavoritesPromotedCmd(flags))
@@ -319,7 +318,7 @@ func (f *rootFlags) printTable(w *cobra.Command, headers []string, rows [][]stri
 func newVersionCliCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print version",
+		Short: "Show the installed AnyList CLI version",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("anylist-pp-cli %s\n", version)
 		},

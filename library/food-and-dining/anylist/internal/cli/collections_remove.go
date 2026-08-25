@@ -69,12 +69,16 @@ func newCollectionsRemoveCmd(flags *rootFlags) *cobra.Command {
 			if err := anylist.New(cfg).SaveRecipeCollection(ctx, recipeDataID, collection); err != nil {
 				return err
 			}
-			if err := syncStoreFromLive(ctx, cfg, st); err != nil {
+			verifiedData, verified, err := verifyLiveRecipeCollection(ctx, cfg, collection)
+			if err != nil {
+				return err
+			}
+			if err := st.SyncFromUserData(verifiedData); err != nil {
 				return fmt.Errorf("refreshing data after updating collection: %w", err)
 			}
 			if flags.asJSON {
 				return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
-					"collection": collection.GetName(),
+					"collection": verified.GetName(),
 					"recipe":     recipe.GetName(),
 					"removed":    removed,
 				}, flags)

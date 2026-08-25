@@ -18,7 +18,7 @@
   "category": "food-and-dining",
   "description": "AnyList shopping, recipes, meal planning, and local grocery automation CLI.",
   "mcp_binary": "anylist-pp-mcp",
-  "mcp_tool_count": 44,
+  "mcp_tool_count": 47,
   "mcp_ready": "full",
   "api_version": "0.1.0",
   "auth_type": "bearer_token",

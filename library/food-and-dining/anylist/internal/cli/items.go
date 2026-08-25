@@ -18,6 +18,8 @@ func newItemsCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newItemsCheckCmd(flags))
 	cmd.AddCommand(newItemsListCmd(flags))
 	cmd.AddCommand(newItemsLookupCmd(flags))
+	cmd.AddCommand(newItemsPhotoCmd(flags))
+	cmd.AddCommand(newItemsRecycleCmd(flags))
 	cmd.AddCommand(newItemsRecentCmd(flags))
 	cmd.AddCommand(newItemsRemoveCmd(flags))
 	cmd.AddCommand(newItemsSearchCmd(flags))
