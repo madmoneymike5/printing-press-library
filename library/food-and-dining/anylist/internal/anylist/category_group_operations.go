@@ -46,6 +46,9 @@ func (c *Client) DeleteListCategory(ctx context.Context, listID string, group *p
 	if category.GetCategoryGroupId() != group.GetIdentifier() {
 		return fmt.Errorf("category ID %q belongs to group %q, not %q", category.GetIdentifier(), category.GetCategoryGroupId(), group.GetIdentifier())
 	}
+	if strings.TrimSpace(category.GetSystemCategory()) != "" {
+		return fmt.Errorf("category %q is a system category and cannot be deleted", category.GetIdentifier())
+	}
 	if category.GetListId() != "" && category.GetListId() != listID {
 		return fmt.Errorf("category list ID %q does not match list ID %q", category.GetListId(), listID)
 	}

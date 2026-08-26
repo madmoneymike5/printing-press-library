@@ -176,6 +176,11 @@ func TestDeleteListCategoryValidatesBeforeRequest(t *testing.T) {
 	if err := client.DeleteListCategory(t.Context(), "list-1", group, otherGroupCategory); err == nil {
 		t.Error("category from a different group must be rejected")
 	}
+	systemCategory := proto.Clone(category).(*pb.PBListCategory)
+	systemCategory.SystemCategory = "other"
+	if err := client.DeleteListCategory(t.Context(), "list-1", group, systemCategory); err == nil {
+		t.Error("system category must be rejected")
+	}
 	if len(*requests) != 0 {
 		t.Fatalf("rejected payloads produced %d requests, want 0", len(*requests))
 	}
