@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/anylist/pb"
 )
 
@@ -86,23 +87,21 @@ func selectCategoryGroupForCreate(userData *pb.PBUserDataResponse, listID, group
 	return matches[0], nil
 }
 
-// newCategoryStableID derives a slug-style stable ID from the category name
-// and appends a numeric suffix until it is unique against existing category
-// identifiers in the list.
-func newCategoryStableID(name string, existing []*pb.PBListCategory) string {
+// newCategoryStableID generates the same 32-hex identifier shape observed on
+// live AnyList categories and avoids the (extremely unlikely) collision with
+// an existing category in the list. AnyList category identifiers are opaque;
+// they must not be derived from user-visible names.
+func newCategoryStableID(_ string, existing []*pb.PBListCategory) string {
 	taken := map[string]bool{}
 	for _, category := range existing {
 		taken[strings.ToLower(category.GetIdentifier())] = true
 	}
-	base := normalizeCategoryToken(name)
-	if base == "" {
-		base = "category"
+	for {
+		id := strings.ReplaceAll(uuid.NewString(), "-", "")
+		if !taken[strings.ToLower(id)] {
+			return id
+		}
 	}
-	id := base
-	for i := 2; taken[strings.ToLower(id)]; i++ {
-		id = fmt.Sprintf("%s-%d", base, i)
-	}
-	return id
 }
 
 // nextCategorySortIndex returns the sort index for a new category appended

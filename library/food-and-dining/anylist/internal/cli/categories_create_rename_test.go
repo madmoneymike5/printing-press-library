@@ -151,21 +151,20 @@ func TestSelectCategoryGroupForCreate(t *testing.T) {
 	}
 }
 
-func TestNewCategoryStableIDAvoidsConflicts(t *testing.T) {
+func TestNewCategoryStableIDUsesOpaqueAnyListShape(t *testing.T) {
 	t.Parallel()
-	existing := []*pb.PBListCategory{{Identifier: "pantry-aisle"}, {Identifier: "Produce"}}
-	if id := newCategoryStableID("Pantry Aisle", existing); id != "pantry-aisle-2" {
-		t.Errorf("conflicting ID = %q, want pantry-aisle-2", id)
+	existing := []*pb.PBListCategory{{Identifier: "00000000000000000000000000000000"}}
+	id := newCategoryStableID("Pantry Aisle", existing)
+	if len(id) != 32 {
+		t.Fatalf("generated ID length = %d, want 32", len(id))
 	}
-	if id := newCategoryStableID("Freezer", existing); id != "freezer" {
-		t.Errorf("fresh ID = %q, want freezer", id)
+	if id == existing[0].GetIdentifier() {
+		t.Fatalf("generated ID collided with existing category: %q", id)
 	}
-	chained := []*pb.PBListCategory{{Identifier: "pantry-aisle"}, {Identifier: "pantry-aisle-2"}}
-	if id := newCategoryStableID("Pantry Aisle", chained); id != "pantry-aisle-3" {
-		t.Errorf("chained conflict ID = %q, want pantry-aisle-3", id)
-	}
-	if id := newCategoryStableID("!!!", existing); id != "category" {
-		t.Errorf("non-slug name ID = %q, want category", id)
+	for _, r := range id {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			t.Fatalf("generated ID = %q, want lowercase hexadecimal", id)
+		}
 	}
 }
 
