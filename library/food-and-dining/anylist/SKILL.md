@@ -194,9 +194,12 @@ Remain read-only until recipe approval, pantry adjustments, ingredient decisions
 
 ## Command Reference
 
-**categories** — View item categories
+**categories** — View item categories, and create/rename custom categories
 
-- `anylist-pp-cli categories` — List all item categories
+- `anylist-pp-cli categories` — List all item categories (read-only)
+- `anylist-pp-cli categories create --list <list> --name <name>` — Preview or create a custom category with explicit `--apply`; the list and category group are resolved by a fresh live read (the list must have exactly one group unless `--category-group` selects one), the new category gets a non-conflicting stable ID and a valid sort index, and the create is verified by stable ID before success
+- `anylist-pp-cli categories rename --list <list> --category <id-or-name> --new-name <name>` — Preview or rename one custom category by stable ID or exact name with explicit `--apply`; ambiguous or missing names fail closed, the stable identifier/group/list/sort index are preserved, and the new name is verified by stable ID before success
+- Custom category writes use the verified multipart `/data/shopping-lists/update-v2` wire contract (the non-persistent v1 route is never used). Category deletion, category-group create/rename/delete, and category reordering remain unsupported.
 
 **collections** — Manage recipe collections
 

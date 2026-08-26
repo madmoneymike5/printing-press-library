@@ -30,10 +30,81 @@
   "tools": [
     {
       "name": "categories_list",
-      "description": "List all item categories (read-only; custom category writes are unsupported). Returns array of Category.",
+      "description": "List all item categories (read-only). Custom category create and rename are available through the CLI mirror (categories_create / categories_rename); category deletion, group CRUD, and reordering are unsupported. Returns array of Category.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
+    },
+    {
+      "name": "categories_create",
+      "description": "Preview or create a custom category in a shopping list with explicit apply and fresh stable-ID verification. The list and category group come from a fresh live read; the new category gets a non-conflicting stable ID and is appended after the group's current entries. Required: list and name.",
+      "method": "POST",
+      "path": "/data/shopping-lists/update-v2",
+      "params": [
+        {
+          "name": "list",
+          "type": "string",
+          "location": "body",
+          "description": "Target list (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "description": "Name for the new category",
+          "required": true
+        },
+        {
+          "name": "category-group",
+          "wire_name": "category_group",
+          "type": "string",
+          "location": "body",
+          "description": "Target category group (stable ID or exact name); required when the list has more than one group"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the creation; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "categories_rename",
+      "description": "Preview or rename a custom category by stable ID or exact name with explicit apply and fresh stable-ID verification. The stable identifier, category group, list, and sort index are preserved. Required: list, category, and new-name.",
+      "method": "POST",
+      "path": "/data/shopping-lists/update-v2",
+      "params": [
+        {
+          "name": "list",
+          "type": "string",
+          "location": "body",
+          "description": "Target list (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "location": "body",
+          "description": "Category to rename (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "new-name",
+          "wire_name": "new_name",
+          "type": "string",
+          "location": "body",
+          "description": "New category name",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the rename; preview is the default"
+        }
+      ]
     },
     {
       "name": "export",

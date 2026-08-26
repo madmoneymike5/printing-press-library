@@ -14,7 +14,7 @@ func newCategoriesPromotedCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "categories",
 		Short:       "List all item categories",
-		Long:        "Shortcut for 'categories list'. List all item categories with optional item counts per category.",
+		Long:        "List all item categories, or create/rename a custom category in a shopping list. Category deletion, group CRUD, and reordering are not supported.",
 		Example:     "  anylist-pp-cli categories\n  anylist-pp-cli categories --with-counts --json",
 		Annotations: map[string]string{"pp:endpoint": "categories.list", "pp:method": "POST", "pp:path": "/data/user-data/get", "mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -96,5 +96,7 @@ func newCategoriesPromotedCmd(flags *rootFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&withCounts, "with-counts", false, "Show item count per category")
+	cmd.AddCommand(newCategoriesCreateCmd(flags))
+	cmd.AddCommand(newCategoriesRenameCmd(flags))
 	return cmd
 }
