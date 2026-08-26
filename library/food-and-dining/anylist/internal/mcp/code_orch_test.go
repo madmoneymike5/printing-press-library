@@ -68,7 +68,7 @@ func TestCodeOrchReadOnlyAllowlistTracksEndpointShape(t *testing.T) {
 func TestCodeOrchExecuteRejectsMutationsBeforeClient(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	mutations := []string{
-		"categories.create", "categories.rename",
+		"categories.create", "categories.rename", "categories.delete", "categories.reorder",
 		"items.add", "items.remove", "items.update", "items.check",
 		"lists.create", "lists.delete", "lists.rename", "lists.reset", "lists.settings",
 		"meal.add", "meal.update", "meal.delete",

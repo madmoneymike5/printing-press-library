@@ -238,8 +238,8 @@ func handleContext(_ context.Context, _ mcplib.CallToolRequest) (*mcplib.CallToo
 		"resources": []map[string]any{
 			{
 				"name":        "categories",
-				"description": "View item categories",
-				"endpoints":   []string{"list"},
+				"description": "View item categories; custom category create, delete, rename, and reorder are available through the CLI mirror with explicit apply gates and fresh read-back verification",
+				"endpoints":   []string{"create", "delete", "list", "reorder", "rename"},
 			},
 			{
 				"name":        "collections",

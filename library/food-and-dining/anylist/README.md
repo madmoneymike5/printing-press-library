@@ -300,13 +300,15 @@ Run `anylist-pp-cli --help` for the full command reference and flag list.
 
 ### categories
 
-View item categories, and create/rename custom categories
+View item categories, and create, rename, delete, or reorder custom categories
 
 - **`anylist-pp-cli categories`** - List all item categories (read-only)
 - **`anylist-pp-cli categories create`** - Preview or create a custom category in a shopping list with explicit `--apply`; the list and category group are resolved by a fresh live read, the new category gets a non-conflicting stable ID and a valid sort index, and the create is verified by stable ID before success
 - **`anylist-pp-cli categories rename`** - Preview or rename a custom category by stable ID or exact name with explicit `--apply`; ambiguous or missing names fail closed, the stable identifier/group/list/sort index are preserved, and the new name is verified by stable ID before success
+- **`anylist-pp-cli categories delete`** - Preview or delete a custom category by stable ID or exact name with explicit `--apply`; ambiguous or missing names fail closed, system categories cannot be deleted, and the deletion is verified by confirming the stable ID is absent from a fresh read before success
+- **`anylist-pp-cli categories reorder`** - Preview or reorder a category group's categories with explicit `--apply`; `--order` must name every category in the group exactly once by stable ID or exact name (duplicates, unknown entries, and silently appended or dropped categories fail closed), and the exact stable-ID order is verified from a fresh read before success
 
-Custom category writes use the verified multipart `/data/shopping-lists/update-v2` wire contract; the non-persistent v1 route is never used for them. Category deletion, category-group create/rename/delete, and category reordering remain unsupported.
+Custom category writes use the verified multipart `/data/shopping-lists/update-v2` wire contract; the non-persistent v1 route and the old non-persistent `remove-category` handler are never used for them. Category-group create, rename, and delete (group CRUD) remain unsupported.
 
 ### collections
 

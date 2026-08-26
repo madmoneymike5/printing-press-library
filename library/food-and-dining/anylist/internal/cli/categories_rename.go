@@ -19,7 +19,7 @@ func newCategoriesRenameCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "rename",
 		Short:       "Rename a custom category in a shopping list (preview unless --apply)",
-		Long:        "Rename one custom category in the selected shopping list. The target category is resolved by a fresh live read using its stable ID or exact name; ambiguous or missing names fail closed. The stable identifier, category group, list, and sort index are preserved. Preview is the default; --apply performs the live write on the proven /data/shopping-lists/update-v2 wire contract and verifies the new name by stable ID before reporting success. Category deletion, group CRUD, and reordering are not supported.",
+		Long:        "Rename one custom category in the selected shopping list. The target category is resolved by a fresh live read using its stable ID or exact name; ambiguous or missing names fail closed. The stable identifier, category group, list, and sort index are preserved. Preview is the default; --apply performs the live write on the proven /data/shopping-lists/update-v2 wire contract and verifies the new name by stable ID before reporting success. Category-group create, rename, and delete (group CRUD) are not supported.",
 		Example:     "  anylist-pp-cli categories rename --list Groceries --category \"Pantry Aisle\" --new-name \"Pantry\" --apply",
 		Annotations: map[string]string{"pp:endpoint": "categories.rename", "pp:method": "POST", "pp:path": "/data/shopping-lists/update-v2"},
 		RunE: func(cmd *cobra.Command, args []string) error {

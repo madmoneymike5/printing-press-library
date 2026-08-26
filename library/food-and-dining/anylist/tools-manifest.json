@@ -30,7 +30,7 @@
   "tools": [
     {
       "name": "categories_list",
-      "description": "List all item categories (read-only). Custom category create and rename are available through the CLI mirror (categories_create / categories_rename); category deletion, group CRUD, and reordering are unsupported. Returns array of Category.",
+      "description": "List all item categories (read-only). Custom category create, delete, rename, and reorder are available through the CLI mirror (categories_create / categories_delete / categories_rename / categories_reorder); category-group CRUD is unsupported. Returns array of Category.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": []
@@ -71,6 +71,34 @@
       ]
     },
     {
+      "name": "categories_delete",
+      "description": "Preview or delete a custom category in a shopping list with explicit apply and fresh absence verification. The category is resolved by stable ID or exact name; system categories cannot be deleted and ambiguous or missing names fail closed. Required: list and category.",
+      "method": "POST",
+      "path": "/data/shopping-lists/update-v2",
+      "params": [
+        {
+          "name": "list",
+          "type": "string",
+          "location": "body",
+          "description": "Target list (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "location": "body",
+          "description": "Category to delete (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the deletion; preview is the default"
+        }
+      ]
+    },
+    {
       "name": "categories_rename",
       "description": "Preview or rename a custom category by stable ID or exact name with explicit apply and fresh stable-ID verification. The stable identifier, category group, list, and sort index are preserved. Required: list, category, and new-name.",
       "method": "POST",
@@ -103,6 +131,41 @@
           "type": "bool",
           "location": "body",
           "description": "Apply the rename; preview is the default"
+        }
+      ]
+    },
+    {
+      "name": "categories_reorder",
+      "description": "Preview or reorder the categories of a shopping-list category group with explicit apply and fresh read-back order verification. The order must name every category in the group exactly once by stable ID or exact name; duplicates, unknown entries, and silently appended or dropped categories fail closed. Required: list and order.",
+      "method": "POST",
+      "path": "/data/shopping-lists/update-v2",
+      "params": [
+        {
+          "name": "list",
+          "type": "string",
+          "location": "body",
+          "description": "Target list (stable ID or exact name)",
+          "required": true
+        },
+        {
+          "name": "category-group",
+          "wire_name": "category_group",
+          "type": "string",
+          "location": "body",
+          "description": "Target category group (stable ID or exact name); required when the list has more than one group"
+        },
+        {
+          "name": "order",
+          "type": "string",
+          "location": "body",
+          "description": "Comma-separated order naming every category in the group exactly once, by stable ID or exact name",
+          "required": true
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "location": "body",
+          "description": "Apply the reorder; preview is the default"
         }
       ]
     },

@@ -18,7 +18,7 @@ func newCategoriesCreateCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "create",
 		Short:       "Create a custom category in a shopping list (preview unless --apply)",
-		Long:        "Create a custom category in the selected shopping list. The list and category group are resolved by a fresh live read; the new category gets a non-conflicting stable ID and is appended after the group's current entries. Preview is the default; --apply performs the live write on the proven /data/shopping-lists/update-v2 wire contract and verifies the new category by stable ID before reporting success. Category deletion, group CRUD, and reordering are not supported.",
+		Long:        "Create a custom category in the selected shopping list. The list and category group are resolved by a fresh live read; the new category gets a non-conflicting stable ID and is appended after the group's current entries. Preview is the default; --apply performs the live write on the proven /data/shopping-lists/update-v2 wire contract and verifies the new category by stable ID before reporting success. Category-group create, rename, and delete (group CRUD) are not supported.",
 		Example:     "  anylist-pp-cli categories create --list Groceries --name \"Pantry Aisle\" --apply",
 		Annotations: map[string]string{"pp:endpoint": "categories.create", "pp:method": "POST", "pp:path": "/data/shopping-lists/update-v2"},
 		RunE: func(cmd *cobra.Command, args []string) error {

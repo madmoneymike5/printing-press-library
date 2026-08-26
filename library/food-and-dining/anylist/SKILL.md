@@ -194,12 +194,14 @@ Remain read-only until recipe approval, pantry adjustments, ingredient decisions
 
 ## Command Reference
 
-**categories** — View item categories, and create/rename custom categories
+**categories** — View item categories, and create, rename, delete, or reorder custom categories
 
 - `anylist-pp-cli categories` — List all item categories (read-only)
 - `anylist-pp-cli categories create --list <list> --name <name>` — Preview or create a custom category with explicit `--apply`; the list and category group are resolved by a fresh live read (the list must have exactly one group unless `--category-group` selects one), the new category gets a non-conflicting stable ID and a valid sort index, and the create is verified by stable ID before success
 - `anylist-pp-cli categories rename --list <list> --category <id-or-name> --new-name <name>` — Preview or rename one custom category by stable ID or exact name with explicit `--apply`; ambiguous or missing names fail closed, the stable identifier/group/list/sort index are preserved, and the new name is verified by stable ID before success
-- Custom category writes use the verified multipart `/data/shopping-lists/update-v2` wire contract (the non-persistent v1 route is never used). Category deletion, category-group create/rename/delete, and category reordering remain unsupported.
+- `anylist-pp-cli categories delete --list <list> --category <id-or-name>` — Preview or delete one custom category by stable ID or exact name with explicit `--apply`; ambiguous or missing names fail closed, system categories cannot be deleted, and the deletion is verified by confirming the stable ID is absent from a fresh read before success
+- `anylist-pp-cli categories reorder --list <list> --order <id-or-name,id-or-name,…>` — Preview or reorder a category group's categories with explicit `--apply`; the list must have exactly one group unless `--category-group` selects one, `--order` must name every category in the group exactly once (duplicates, unknown entries, and silently appended or dropped categories fail closed), and the exact stable-ID order is verified from a fresh read before success
+- Custom category writes use the verified multipart `/data/shopping-lists/update-v2` wire contract (the non-persistent v1 route and the old non-persistent `remove-category` handler are never used). Category-group create, rename, and delete (group CRUD) remain unsupported.
 
 **collections** — Manage recipe collections
 
