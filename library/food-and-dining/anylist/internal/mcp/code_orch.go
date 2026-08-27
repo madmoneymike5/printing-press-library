@@ -54,7 +54,7 @@ type codeOrchEndpoint struct {
 	keywords   []string
 }
 
-// codeOrchEndpoints is populated by init() in code_orch_data.go.
+// codeOrchEndpoints is populated by the domain-specific registry files.
 var codeOrchEndpoints []codeOrchEndpoint
 
 func handleCodeOrchSearch(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
