@@ -15,7 +15,7 @@ import (
 
 // GetItems returns items for a list, optionally filtered by checked state.
 func (s *Store) GetItems(listID string, checked *bool) ([]ItemRow, error) {
-	query := `SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids
+	query := `SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids, category_assignments
 	          FROM items WHERE list_id = ?`
 	args := []any{listID}
 	if checked != nil {
@@ -39,7 +39,7 @@ func (s *Store) GetItems(listID string, checked *bool) ([]ItemRow, error) {
 func (s *Store) FindItemByName(listID, name string) (*ItemRow, error) {
 	lower := strings.ToLower(name)
 	rows, err := s.db.Query(
-		`SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids
+		`SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids, category_assignments
 		 FROM items WHERE list_id = ?`, listID)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (s *Store) FindItemByName(listID, name string) (*ItemRow, error) {
 // FindItemByID finds an item in a list by exact item identifier.
 func (s *Store) FindItemByID(listID, itemID string) (*ItemRow, error) {
 	rows, err := s.db.Query(
-		`SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids
+		`SELECT id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids, category_assignments
 		 FROM items WHERE list_id = ? AND id = ?`, listID, itemID)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (s *Store) SearchItems(query string) ([]ItemSearchResult, error) {
 	ftsQuery := ftsPrefixQuery(query)
 	sqlQuery := `
 		SELECT i.id, i.list_id, i.name, i.product_upc, i.package_size, i.quantity, i.details, i.category, i.category_match_id,
-		       i.checked, i.manual_sort_index, i.store_ids, i.prices, i.photo_ids, l.name as list_name
+		       i.checked, i.manual_sort_index, i.store_ids, i.prices, i.photo_ids, i.category_assignments, l.name as list_name
 		FROM items i
 		JOIN lists l ON i.list_id = l.id
 		WHERE i.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)
@@ -116,9 +116,10 @@ func (s *Store) SearchItems(query string) ([]ItemSearchResult, error) {
 		var storeIDsStr string
 		var pricesStr string
 		var photoIDsStr string
+		var categoryAssignmentsStr string
 		if err := rows.Scan(
 			&r.ID, &r.ListID, &r.Name, &r.ProductUpc, &packageSizeStr, &r.Quantity, &r.Details,
-			&r.Category, &r.CategoryMatchID, &checkedInt, &r.SortIndex, &storeIDsStr, &pricesStr, &photoIDsStr, &r.ListName,
+			&r.Category, &r.CategoryMatchID, &checkedInt, &r.SortIndex, &storeIDsStr, &pricesStr, &photoIDsStr, &categoryAssignmentsStr, &r.ListName,
 		); err != nil {
 			return nil, err
 		}
@@ -130,6 +131,7 @@ func (s *Store) SearchItems(query string) ([]ItemSearchResult, error) {
 		r.StoreIDs = parseStoreIDs(storeIDsStr)
 		r.Prices = parsePrices(pricesStr)
 		r.PhotoIDs = parsePhotoIDs(photoIDsStr)
+		r.CategoryAssignments = parseCategoryAssignments(categoryAssignmentsStr)
 		results = append(results, r)
 	}
 	return results, rows.Err()
@@ -139,7 +141,7 @@ func (s *Store) SearchItems(query string) ([]ItemSearchResult, error) {
 func (s *Store) GetListsByStore(listID string) ([]StoreGroup, error) {
 	sqlQuery := `
 		SELECT i.id, i.list_id, i.name, i.product_upc, i.package_size, i.quantity, i.details, i.category, i.category_match_id,
-		       i.checked, i.manual_sort_index, i.store_ids, i.prices, i.photo_ids,
+		       i.checked, i.manual_sort_index, i.store_ids, i.prices, i.photo_ids, i.category_assignments,
 		       COALESCE(s.name, 'Unassigned') as store_name, COALESCE(s.sort_index, 9999) as ssi
 		FROM items i
 		LEFT JOIN (
@@ -171,12 +173,13 @@ func (s *Store) GetListsByStore(listID string) ([]StoreGroup, error) {
 		var storeIDsStr string
 		var pricesStr string
 		var photoIDsStr string
+		var categoryAssignmentsStr string
 		var storeName string
 		var ssi int
 		if err := rows.Scan(
 			&item.ID, &item.ListID, &item.Name, &item.ProductUpc, &packageSizeStr, &item.Quantity, &item.Details,
 			&item.Category, &item.CategoryMatchID, &checkedInt, &item.SortIndex,
-			&storeIDsStr, &pricesStr, &photoIDsStr, &storeName, &ssi,
+			&storeIDsStr, &pricesStr, &photoIDsStr, &categoryAssignmentsStr, &storeName, &ssi,
 		); err != nil {
 			return nil, err
 		}
@@ -187,6 +190,7 @@ func (s *Store) GetListsByStore(listID string) ([]StoreGroup, error) {
 		item.StoreIDs = parseStoreIDs(storeIDsStr)
 		item.Prices = parsePrices(pricesStr)
 		item.PhotoIDs = parsePhotoIDs(photoIDsStr)
+		item.CategoryAssignments = parseCategoryAssignments(categoryAssignmentsStr)
 		groupMap[storeName] = append(groupMap[storeName], item)
 		if !seen[storeName] {
 			seen[storeName] = true

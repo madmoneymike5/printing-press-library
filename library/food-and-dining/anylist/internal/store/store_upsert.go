@@ -88,10 +88,14 @@ func upsertItem(tx *sql.Tx, item *pb.ListItem) error {
 	if err != nil {
 		photoIDsJSON = []byte("[]")
 	}
+	categoryAssignmentsJSON, err := json.Marshal(item.GetCategoryAssignments())
+	if err != nil {
+		categoryAssignmentsJSON = []byte("[]")
+	}
 	_, err = tx.Exec(
 		`INSERT OR REPLACE INTO items
-		 (id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (id, list_id, name, product_upc, package_size, quantity, details, category, category_match_id, checked, manual_sort_index, store_ids, prices, photo_ids, category_assignments)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.GetIdentifier(),
 		item.GetListId(),
 		item.GetName(),
@@ -106,6 +110,7 @@ func upsertItem(tx *sql.Tx, item *pb.ListItem) error {
 		string(storeIDsJSON),
 		string(pricesJSON),
 		string(photoIDsJSON),
+		string(categoryAssignmentsJSON),
 	)
 	return err
 }

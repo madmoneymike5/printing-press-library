@@ -27,20 +27,21 @@ type ListRow struct {
 	NewItemPosition int
 }
 type ItemRow struct {
-	ID              string
-	ListID          string
-	Name            string
-	ProductUpc      string
-	PackageSize     *pb.PBItemPackageSize
-	Quantity        string
-	Details         string
-	Category        string
-	CategoryMatchID string
-	Checked         bool
-	SortIndex       int
-	StoreIDs        []string
-	Prices          []*pb.PBItemPrice
-	PhotoIDs        []string
+	ID                  string
+	ListID              string
+	Name                string
+	ProductUpc          string
+	PackageSize         *pb.PBItemPackageSize
+	Quantity            string
+	Details             string
+	Category            string
+	CategoryMatchID     string
+	Checked             bool
+	SortIndex           int
+	StoreIDs            []string
+	Prices              []*pb.PBItemPrice
+	PhotoIDs            []string
+	CategoryAssignments []*pb.PBListItemCategoryAssignment
 }
 type RecipeRow struct {
 	ID                string

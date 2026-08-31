@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS items (
     manual_sort_index INTEGER DEFAULT 0,
     store_ids TEXT DEFAULT '[]',
     prices TEXT DEFAULT '[]',
-    photo_ids TEXT DEFAULT '[]'
+    photo_ids TEXT DEFAULT '[]',
+    category_assignments TEXT DEFAULT '[]'
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(name, content='items', content_rowid='rowid');
@@ -187,6 +188,9 @@ END;
 		return err
 	}
 	if err := s.ensureColumn("items", "photo_ids", "TEXT DEFAULT '[]'"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("items", "category_assignments", "TEXT DEFAULT '[]'"); err != nil {
 		return err
 	}
 	if err := s.ensureColumn("recipes", "photo_ids", "TEXT DEFAULT '[]'"); err != nil {

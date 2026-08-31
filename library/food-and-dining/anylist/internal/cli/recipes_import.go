@@ -5,16 +5,20 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/anylist"
+	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/anylist/pb"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 )
 
 func newRecipesImportCmd(flags *rootFlags) *cobra.Command {
 	var bodyUrl string
 	var bodyAddToList string
 	var bodyScale int
+	var bodyOnDuplicate string
 	var stdinBody bool
 
 	cmd := &cobra.Command{
@@ -31,7 +35,13 @@ func newRecipesImportCmd(flags *rootFlags) *cobra.Command {
 				bodyUrl = stringFromBody(body, "url")
 				bodyAddToList = stringFromBody(body, "add_to_list")
 				bodyScale = intFromBody(body, "scale")
+				bodyOnDuplicate = stringFromBody(body, "on_duplicate")
 			}
+			policy, err := recipeImportDuplicatePolicy(bodyOnDuplicate)
+			if err != nil {
+				return err
+			}
+			bodyOnDuplicate = policy
 			if bodyUrl == "" && !cmd.Flags().Changed("url") && !flags.dryRun {
 				return fmt.Errorf("required flag \"url\" not set")
 			}
@@ -53,18 +63,36 @@ func newRecipesImportCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, recipeDataID, err := currentRecipeData(ctx, cfg)
+			userData, recipeDataID, err := currentRecipeData(ctx, cfg)
 			if err != nil {
 				return fmt.Errorf("reading live recipe data: %w", err)
 			}
 			alClient := anylist.New(cfg)
-			if err := alClient.SaveRecipe(ctx, recipeDataID, recipe, true); err != nil {
-				return fmt.Errorf("importing recipe: %w", err)
+			matches := findLiveRecipesExactByName(userData, recipe.GetName())
+			action, err := recipeImportAction(bodyOnDuplicate, recipe.GetName(), len(matches))
+			if err != nil {
+				return err
+			}
+			imported := recipe
+			skipped := action == "skip"
+			if skipped {
+				imported = matches[0]
+			} else {
+				fromWebImport := action != "update"
+				if action == "update" {
+					imported = proto.Clone(recipe).(*pb.PBRecipe)
+					imported.Identifier = matches[0].GetIdentifier()
+					imported.CreationTimestamp = matches[0].GetCreationTimestamp()
+					fromWebImport = false
+				}
+				if err := alClient.SaveRecipe(ctx, recipeDataID, imported, fromWebImport); err != nil {
+					return fmt.Errorf("importing recipe: %w", err)
+				}
 			}
 			if err := syncStoreFromLive(ctx, cfg, st); err != nil {
 				return fmt.Errorf("refreshing data after import: %w", err)
 			}
-			imported, err := st.FindRecipeByName(recipe.GetName())
+			stored, err := st.FindRecipeByID(imported.GetIdentifier())
 			if err != nil {
 				return fmt.Errorf("verifying recipe import: %w", err)
 			}
@@ -73,12 +101,22 @@ func newRecipesImportCmd(flags *rootFlags) *cobra.Command {
 
 			if flags.asJSON {
 				return printJSONFiltered(cmd.OutOrStdout(), map[string]any{
-					"imported":    true,
-					"recipe":      imported,
-					"added_items": added,
+					"imported":        !skipped,
+					"skipped":         skipped,
+					"duplicate":       len(matches) > 0,
+					"duplicate_count": len(matches),
+					"on_duplicate":    bodyOnDuplicate,
+					"recipe":          stored,
+					"added_items":     added,
 				}, flags)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Imported recipe %q\n", imported.Name)
+			if skipped {
+				fmt.Fprintf(cmd.OutOrStdout(), "Skipped duplicate recipe %q\n", stored.Name)
+			} else if len(matches) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Updated existing recipe %q\n", stored.Name)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Imported recipe %q\n", stored.Name)
+			}
 			if added > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Added %d ingredients to %q\n", added, bodyAddToList)
 			}
@@ -88,7 +126,38 @@ func newRecipesImportCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().StringVar(&bodyUrl, "url", "", "URL to import recipe from")
 	cmd.Flags().StringVar(&bodyAddToList, "add-to-list", "", "Add recipe ingredients to this list after import")
 	cmd.Flags().IntVar(&bodyScale, "scale", 0, "Scale to this many servings (0 = no scaling)")
+	cmd.Flags().StringVar(&bodyOnDuplicate, "on-duplicate", "skip", "Duplicate policy: skip, update, or allow")
 	cmd.Flags().BoolVar(&stdinBody, "stdin", false, "Read request body as JSON from stdin")
 
 	return cmd
+}
+
+func recipeImportDuplicatePolicy(value string) (string, error) {
+	policy := strings.ToLower(strings.TrimSpace(value))
+	if policy == "" {
+		policy = "skip"
+	}
+	switch policy {
+	case "skip", "update", "allow":
+		return policy, nil
+	default:
+		return "", fmt.Errorf("invalid --on-duplicate %q; must be skip, update, or allow", value)
+	}
+}
+
+func recipeImportAction(policy, name string, matchCount int) (string, error) {
+	policy, err := recipeImportDuplicatePolicy(policy)
+	if err != nil {
+		return "", err
+	}
+	if matchCount == 0 || policy == "allow" {
+		return "import", nil
+	}
+	if policy == "skip" {
+		return "skip", nil
+	}
+	if matchCount > 1 {
+		return "", fmt.Errorf("cannot update recipe %q: %d exact-name duplicates already exist; run 'recipes duplicates' and resolve the ambiguity first", name, matchCount)
+	}
+	return "update", nil
 }

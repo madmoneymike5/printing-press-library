@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "id": "anylist-recipe-dedup-metadata",
+  "applied_at": "2026-08-30",
+  "summary": "Add read-only recipe duplicate reporting, duplicate-safe URL imports, and cached item metadata output.",
+  "reason": "Current main already contains the base recipe update and Paprika workflows. URL imports still created exact-name duplicates, duplicate cleanup had no report command, and items list JSON hid cached metadata needed for safe selection and review.",
+  "files": [
+    "README.md",
+    "SKILL.md",
+    "spec.yaml",
+    "tools-manifest.json",
+    "internal/mcp/code_orch.go",
+    "internal/mcp/code_orch_recipes.go",
+    "internal/cli/recipes_duplicates.go",
+    "internal/cli/recipes_duplicates_test.go",
+    "internal/cli/recipes_import.go",
+    "internal/cli/recipes_import_test.go",
+    "internal/cli/items_list.go",
+    "internal/cli/items_list_test.go",
+    "internal/store/store_core.go",
+    "internal/store/store_schema.go",
+    "internal/store/store_upsert.go",
+    "internal/store/store_scan.go",
+    "internal/store/store_items.go",
+    "internal/store/store_category_assignments_test.go"
+  ],
+  "validated_outcome": "URL imports support skip, unique-match update, and allow policies, with ambiguous updates rejected. Duplicate names are reported from the local cache. Item JSON preserves package size, prices, photo IDs, store IDs, category match ID, and category assignments through fresh and migrated caches. Full non-race tests, focused race tests, go vet, and go build pass; the full race suite still exposes pre-existing parallel CLI test races.",
+  "findings_addressed": [
+    "recipe-import-duplicate-creation",
+    "missing-recipe-duplicate-report",
+    "hidden-item-metadata",
+    "uncached-category-assignments"
+  ]
+}

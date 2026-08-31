@@ -230,7 +230,7 @@ Create/delete, rename, parent movement, and child ordering use handlers verified
 
 - `anylist-pp-cli items add` — Add an explicitly selected item to a shopping list. The AI must choose the stable item ID or explicitly request creation. Preview is the default and `--apply` is required for every live write; fresh live and cache read-back verification must succeed before the command reports success. Use `--store` for a store assignment and `--price`, `--price-store`, or `--price-details` for price metadata. Store removal remains an `items update --remove-store` operation.
 - `anylist-pp-cli items check` — Mark one or more items as checked (bought)
-- `anylist-pp-cli items list` — List items in a shopping list
+- `anylist-pp-cli items list` — List items in a shopping list; JSON output includes cached package size, photo IDs, prices, store IDs, category match ID, and category assignments when available
 - `anylist-pp-cli items lookup` — Look up product details by UPC/EAN barcode
 - `anylist-pp-cli items recent` — Show recently added items across all lists
 - `anylist-pp-cli items remove` — Remove an item from a shopping list
@@ -273,8 +273,9 @@ Create/delete, rename, parent movement, and child ordering use handlers verified
 - `anylist-pp-cli recipes create` — Create a new recipe
 - `anylist-pp-cli recipes delete` — Delete a recipe
 - `anylist-pp-cli recipes filter` — Filter recipes by prep time, rating, servings, and collection
-- `anylist-pp-cli recipes import` — Import a recipe from a URL
+- `anylist-pp-cli recipes import` — Import a recipe from a URL; exact-name duplicates are skipped by default, with `--on-duplicate update|allow` available for explicit handling
 - `anylist-pp-cli recipes import-paprika` — Preview or explicitly apply a validated Paprika archive/file import; duplicate candidates are reported and photo/category/collection writes are not attempted
+- `anylist-pp-cli recipes duplicates` — Report duplicate recipe names from the local cache without changing anything
 - `anylist-pp-cli recipes link` — Show a cached recipe's source URL (read-only local operation)
 - `anylist-pp-cli recipes sharing list` — Show pending requests, requests awaiting confirmation, and linked users from fresh user data
 - `anylist-pp-cli recipes sharing request` — Preview or explicitly request recipe sharing with an exact email address
@@ -292,6 +293,8 @@ Create/delete, rename, parent movement, and child ordering use handlers verified
 - `anylist-pp-cli recipes update` — Preview selected recipe changes by default; `--apply` enables the verified `save-recipe` write and fresh read-after-write/cache verification. Omitted fields are preserved (`--new-name`, `--source-name`, `--source-url`, `--note`, `--nutrition`, `--servings`, `--prep-time`, `--cook-time`, `--rating`); stdin also accepts ingredient and preparation-step arrays plus `apply: true`.
 
 `recipes import-paprika --input <path>` parses the complete `.paprika`/`.paprikarecipe` input and previews planned creates, skips, and duplicate candidates without network access. `--apply` is required for AnyList writes; `--update-existing` opts into updates, ambiguous matches are rejected, and live ingredient/step content is verified before cache refresh. Paprika categories are report-only; photo, collection, and Walmart operations are not guessed.
+
+`recipes import --url <url>` skips an exact-name duplicate by default. Use `--on-duplicate update` to replace a unique matching recipe, or `--on-duplicate allow` to create another copy. Ambiguous updates fail closed. `recipes duplicates` reports the local exact-name groups that need cleanup.
 
 Recipe photo commands use the captured `/data/photos/upload` plus `save-recipe` protobuf flow. Attach and clear are preview-only by default, require `--apply` for writes, verify the complete photo-ID result with a fresh live read, and sync the photo IDs into the local cache. Recipe sharing uses the separate typed link-request endpoints; it does not send email or print invitations.
 

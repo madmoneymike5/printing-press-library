@@ -46,6 +46,25 @@ func findLiveRecipeByName(userData *pb.PBUserDataResponse, name string) (*pb.PBR
 	}
 	return nil, fmt.Errorf("recipe %q not found", name)
 }
+
+func findLiveRecipesExactByName(userData *pb.PBUserDataResponse, name string) []*pb.PBRecipe {
+	rdr := userData.GetRecipeDataResponse()
+	if rdr == nil {
+		return nil
+	}
+	want := strings.TrimSpace(name)
+	if want == "" {
+		return nil
+	}
+	matches := make([]*pb.PBRecipe, 0)
+	for _, recipe := range rdr.GetRecipes() {
+		if strings.EqualFold(strings.TrimSpace(recipe.GetName()), want) {
+			matches = append(matches, recipe)
+		}
+	}
+	return matches
+}
+
 func findLiveRecipeByID(userData *pb.PBUserDataResponse, recipeID string) (*pb.PBRecipe, bool) {
 	rdr := userData.GetRecipeDataResponse()
 	if rdr == nil {

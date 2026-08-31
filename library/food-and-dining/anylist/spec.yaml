@@ -224,7 +224,7 @@ resources:
       list:
         method: POST
         path: /data/user-data/get
-        description: "List items in a shopping list"
+        description: "List items in a shopping list; JSON output includes cached package size, photo IDs, prices, store IDs, category match ID, and category assignments when available"
         body:
           - name: list_name
             flag_name: list
@@ -531,8 +531,23 @@ resources:
             required: false
             default: 0
             description: "Scale to this many servings (0 = no scaling)"
+          - name: on_duplicate
+            flag_name: on-duplicate
+            type: string
+            required: false
+            default: skip
+            description: "Duplicate policy: skip, update, or allow"
         response:
           type: object
+          item: Recipe
+
+      duplicates:
+        method: POST
+        path: /data/user-data/get
+        description: "Report duplicate recipe names from the local cache without changing anything"
+        body: []
+        response:
+          type: array
           item: Recipe
 
       create:
@@ -1126,6 +1141,10 @@ types:
       - name: list_name
         type: string
       - name: store_names
+        type: string
+      - name: package_size
+        type: string
+      - name: category_match_id
         type: string
 
   Recipe:

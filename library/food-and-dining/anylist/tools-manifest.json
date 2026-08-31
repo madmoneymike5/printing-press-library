@@ -501,7 +501,7 @@
     },
     {
       "name": "items_list",
-      "description": "List items in a shopping list. Required: list. Optional: checked (default: false), unchecked (default: false), category. Returns array of ListItem.",
+      "description": "List items in a shopping list. Required: list. Optional: checked (default: false), unchecked (default: false), category. Returns array of ListItem with cached package size, photo IDs, prices, store IDs, category match IDs, and category assignments when available.",
       "method": "POST",
       "path": "/data/user-data/get",
       "params": [
@@ -1321,7 +1321,7 @@
     },
     {
       "name": "recipes_import",
-      "description": "Import a recipe from a URL. Required: url. Optional: add-to-list, scale (default: 0). Returns the new Recipe.",
+      "description": "Import a recipe from a URL. Required: url. Optional: add-to-list, scale (default: 0), on-duplicate (default: skip). Exact-name duplicates are skipped by default; update requires a unique match and allow creates another copy. Returns the selected Recipe.",
       "method": "POST",
       "path": "/data/user-recipe-data/update",
       "params": [
@@ -1344,8 +1344,22 @@
           "type": "integer",
           "location": "body",
           "description": "Scale to this many servings (0 = no scaling)"
+        },
+        {
+          "name": "on-duplicate",
+          "wire_name": "on_duplicate",
+          "type": "string",
+          "location": "body",
+          "description": "Duplicate policy: skip, update, or allow"
         }
       ]
+    },
+    {
+      "name": "recipes_duplicates",
+      "description": "Report recipes with duplicate names from the local cache without changing anything. Returns duplicate groups.",
+      "method": "POST",
+      "path": "/data/user-data/get",
+      "params": []
     },
     {
       "name": "recipes_import_paprika",

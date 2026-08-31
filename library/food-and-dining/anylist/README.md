@@ -345,7 +345,7 @@ Manage items within a shopping list
 
 - **`anylist-pp-cli items add`** - Add an explicitly selected item or create a new item. Semantic ingredient equivalence and candidate selection belong to the AI workflow, not the press. Preview is the default, `--apply` is required, and the CLI performs fresh live and cache read-back verification before success.
 - **`anylist-pp-cli items check`** - Mark one or more items as checked (bought)
-- **`anylist-pp-cli items list`** - List items in a shopping list
+- **`anylist-pp-cli items list`** - List items in a shopping list; JSON output includes cached package size, photo IDs, prices, store IDs, category match ID, and category assignments when available
 - **`anylist-pp-cli items lookup`** - Look up product details by UPC/EAN barcode
 - **`anylist-pp-cli items recent`** - Show recently added items across all lists
 - **`anylist-pp-cli items remove`** - Remove an item from a shopping list
@@ -394,8 +394,9 @@ Manage recipes — import, organize, add to shopping lists, and manage recipe-sh
 - **`anylist-pp-cli recipes create`** - Create a new recipe
 - **`anylist-pp-cli recipes delete`** - Delete a recipe
 - **`anylist-pp-cli recipes filter`** - Filter recipes by prep time, rating, servings, and collection
-- **`anylist-pp-cli recipes import`** - Import a recipe from a URL
+- **`anylist-pp-cli recipes import`** - Import a recipe from a URL; exact-name duplicates are skipped by default, with `--on-duplicate update|allow` available for explicit handling
 - **`anylist-pp-cli recipes import-paprika`** - Preview or explicitly apply a validated Paprika archive/file import; duplicate candidates are reported and photo/category/collection writes are not attempted
+- **`anylist-pp-cli recipes duplicates`** - Report duplicate recipe names from the local cache without changing anything
 - **`anylist-pp-cli recipes link`** - Show a cached recipe's source URL (read-only local operation)
 - **`anylist-pp-cli recipes sharing list`** - Show pending requests, requests awaiting confirmation, and linked users from fresh user data
 - **`anylist-pp-cli recipes sharing request`** - Preview or explicitly request recipe sharing with an exact email address
@@ -472,6 +473,8 @@ This CLI is designed for AI agent consumption:
 `lists create --name <name>` (or `--stdin` with `{"name":"<name>"}`) sends the verified `new-shopping-list` protobuf operation, reads the generated list back by ID, and updates the local cache only after that verification succeeds. `--dry-run` remains offline.
 
 `recipes update --name <existing-name>` previews by default and preserves omitted recipe fields. Pass `--apply` to write; use `--new-name` for a rename, or `--stdin` with `{"recipe":"<existing-name>","new_name":"...","ingredients":[...],"preparation_steps":[...],"apply":true}` to replace only the supplied fields. The update is read back by recipe ID before the local cache is updated.
+
+`recipes import --url <url>` skips an exact-name duplicate by default. Use `--on-duplicate update` to replace a unique matching recipe, or `--on-duplicate allow` to create another copy. Ambiguous updates fail closed. `recipes duplicates` reports the local exact-name groups that need cleanup.
 
 Exit codes: `0` success, `2` usage error, `3` not found, `4` auth error, `5` API error, `7` rate limited, `10` config error.
 

@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/anylist/pb"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -19,9 +21,10 @@ func scanItems(rows *sql.Rows) ([]ItemRow, error) {
 		var storeIDsStr string
 		var pricesStr string
 		var photoIDsStr string
+		var categoryAssignmentsStr string
 		if err := rows.Scan(
 			&it.ID, &it.ListID, &it.Name, &it.ProductUpc, &packageSizeStr, &it.Quantity, &it.Details,
-			&it.Category, &it.CategoryMatchID, &checkedInt, &it.SortIndex, &storeIDsStr, &pricesStr, &photoIDsStr,
+			&it.Category, &it.CategoryMatchID, &checkedInt, &it.SortIndex, &storeIDsStr, &pricesStr, &photoIDsStr, &categoryAssignmentsStr,
 		); err != nil {
 			return nil, err
 		}
@@ -33,6 +36,7 @@ func scanItems(rows *sql.Rows) ([]ItemRow, error) {
 		it.StoreIDs = parseStoreIDs(storeIDsStr)
 		it.Prices = parsePrices(pricesStr)
 		it.PhotoIDs = parsePhotoIDs(photoIDsStr)
+		it.CategoryAssignments = parseCategoryAssignments(categoryAssignmentsStr)
 		items = append(items, it)
 	}
 	return items, rows.Err()
@@ -81,4 +85,12 @@ func parsePhotoIDs(s string) []string {
 		return nil
 	}
 	return ids
+}
+
+func parseCategoryAssignments(s string) []*pb.PBListItemCategoryAssignment {
+	var assignments []*pb.PBListItemCategoryAssignment
+	if err := json.Unmarshal([]byte(s), &assignments); err != nil {
+		return nil
+	}
+	return assignments
 }

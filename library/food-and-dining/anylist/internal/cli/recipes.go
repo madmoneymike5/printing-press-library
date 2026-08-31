@@ -21,6 +21,7 @@ func newRecipesCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newRecipesFilterCmd(flags))
 	cmd.AddCommand(newRecipesImportCmd(flags))
 	cmd.AddCommand(newRecipesImportPaprikaCmd(flags))
+	cmd.AddCommand(newRecipesDuplicatesCmd(flags))
 	cmd.AddCommand(newRecipesLinkCmd(flags))
 	cmd.AddCommand(newRecipesListCmd(flags))
 	cmd.AddCommand(newRecipesMissingCmd(flags))
