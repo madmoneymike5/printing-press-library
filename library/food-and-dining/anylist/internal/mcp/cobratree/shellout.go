@@ -43,6 +43,12 @@ func shellOutToCLI(cliPath func() (string, error), commandPath []string) server.
 	}
 }
 
+// ShellOutToCLI returns the guarded MCP handler for a command path. The
+// orchestration layer uses this for explicitly local read-only endpoints.
+func ShellOutToCLI(cliPath func() (string, error), commandPath []string) server.ToolHandlerFunc {
+	return shellOutToCLI(cliPath, commandPath)
+}
+
 // blockedRootFlags are root-level CLI flags that an MCP client must not be
 // able to override via structured tool parameters. Allowing them lets a
 // caller swap auth credentials, redirect the API base URL, load a malicious

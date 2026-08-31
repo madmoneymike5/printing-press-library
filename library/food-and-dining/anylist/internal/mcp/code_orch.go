@@ -15,6 +15,7 @@ import (
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/mvanhorn/printing-press-library/library/food-and-dining/anylist/internal/mcp/cobratree"
 )
 
 // RegisterCodeOrchestrationTools registers the two agent-facing tools that
@@ -59,10 +60,11 @@ var codeOrchEndpoints []codeOrchEndpoint
 
 // codeOrchReadOnlyEndpoints is the explicit fail-closed allowlist for the
 // generic execute tool. Only these endpoints may be searched and executed:
-// GET lookups and POST data-fetches against the read-only /data/user-data/get
-// route. Everything else — every */update, share, photo, and link route — is
-// a mutation that must go through the CLI command mirror, where preview/apply,
-// typed payloads, read-after-write verification, and cache sync are enforced.
+// GET lookups, explicit local-cache reads, and POST data-fetches against the
+// read-only /data/user-data/get route are allowed. Everything else — every
+// */update, share, photo, and link route — is a mutation that must go through
+// the CLI command mirror, where preview/apply, typed payloads, read-after-write
+// verification, and cache sync are enforced.
 // An endpoint is executable only if it is listed here; regeneration that adds
 // new read endpoints must consciously extend this set (code_orch_test.go
 // keeps the list in lockstep with endpoint shapes).
@@ -88,9 +90,18 @@ var codeOrchReadOnlyEndpoints = map[string]bool{
 	"recipes.scale":        true,
 	"recipes.search":       true,
 	"recipes.show":         true,
+	"recipes.duplicates":   true,
 	"recipes.sharing.list": true,
 	"starters.list":        true,
 	"stores.list":          true,
+}
+
+// codeOrchLocalReadOnlyEndpoints are local commands that generic
+// orchestration may discover and execute through the companion CLI. They are
+// kept separate from remote API reads so the local-cache sentinel can never
+// be mistaken for an HTTP path.
+var codeOrchLocalReadOnlyEndpoints = map[string]bool{
+	"recipes.duplicates": true,
 }
 
 // codeOrchReadOnlyGate fails closed for any endpoint that generic execution
@@ -103,7 +114,16 @@ func codeOrchReadOnlyGate(ep *codeOrchEndpoint) error {
 			ep.ID)
 	}
 	// Defense in depth: even a listed endpoint must be structurally a read —
-	// a GET, or a POST aimed exactly at the read-only user-data fetch route.
+	// an explicit local-cache command, a GET, or a POST aimed exactly at the
+	// read-only user-data fetch route.
+	if codeOrchLocalReadOnlyEndpoints[ep.ID] {
+		if ep.Method != "GET" || ep.Path != "local-cache" {
+			return fmt.Errorf(
+				"endpoint %q is classified as a local read but has metadata %s %s; refusing to execute",
+				ep.ID, ep.Method, ep.Path)
+		}
+		return nil
+	}
 	switch ep.Method {
 	case "GET":
 	case "POST":
@@ -204,6 +224,13 @@ func handleCodeOrchExecute(ctx context.Context, req mcplib.CallToolRequest) (*mc
 	// unclassified route may reach the network via generic execution.
 	if err := codeOrchReadOnlyGate(ep); err != nil {
 		return mcplib.NewToolResultError(err.Error()), nil
+	}
+
+	if codeOrchLocalReadOnlyEndpoints[ep.ID] {
+		localReq := req
+		localReq.Params.Arguments = params
+		commandPath := strings.Split(ep.ID, ".")
+		return cobratree.ShellOutToCLI(cobratree.SiblingCLIPath, commandPath)(ctx, localReq)
 	}
 
 	c, err := newMCPClient()

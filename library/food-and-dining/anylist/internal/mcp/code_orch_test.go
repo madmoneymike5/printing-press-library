@@ -17,11 +17,53 @@ import (
 // /data/user-data/get data-fetch route.
 func codeOrchShapeIsReadOnly(ep *codeOrchEndpoint) bool {
 	if ep.Method == "GET" {
-		// Local-cache commands are not remote endpoints; generic execute must
-		// not send their sentinel path through HTTP.
-		return ep.Path != "local-cache"
+		// Local-cache commands are safe only when they have an explicit local
+		// dispatch path; generic execute must not send their sentinel through HTTP.
+		if ep.Path == "local-cache" {
+			return codeOrchLocalReadOnlyEndpoints[ep.ID]
+		}
+		return true
 	}
 	return ep.Method == "POST" && ep.Path == "/data/user-data/get"
+}
+
+func TestCodeOrchLocalDuplicateEndpointIsSearchableAndExecutes(t *testing.T) {
+	t.Setenv("ANYLIST_CLI_PATH", "/bin/echo")
+
+	searchRes, err := handleCodeOrchSearch(context.Background(), codeOrchRequest("anylist_search", map[string]any{"query": "duplicate", "limit": 100}))
+	if err != nil {
+		t.Fatalf("search handler error: %v", err)
+	}
+	var parsed struct {
+		Results []map[string]any `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(toolResultText(t, searchRes)), &parsed); err != nil {
+		t.Fatalf("unmarshaling search results: %v", err)
+	}
+	found := false
+	for _, result := range parsed.Results {
+		if result["endpoint_id"] == "recipes.duplicates" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("search did not surface recipes.duplicates")
+	}
+
+	executeRes, err := handleCodeOrchExecute(context.Background(), codeOrchRequest("anylist_execute", map[string]any{
+		"endpoint_id": "recipes.duplicates",
+		"params":      map[string]any{},
+	}))
+	if err != nil {
+		t.Fatalf("execute handler error: %v", err)
+	}
+	if executeRes.IsError {
+		t.Fatalf("local duplicate endpoint was rejected: %s", toolResultText(t, executeRes))
+	}
+	if got := strings.TrimSpace(toolResultText(t, executeRes)); got != "recipes duplicates" {
+		t.Fatalf("local duplicate endpoint invoked unexpected command: %q", got)
+	}
 }
 
 func codeOrchRequest(name string, args map[string]any) mcplib.CallToolRequest {

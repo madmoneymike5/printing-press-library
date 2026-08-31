@@ -31,7 +31,7 @@ func newRecipesDuplicatesCmd(flags *rootFlags) *cobra.Command {
 		Use:         "duplicates",
 		Short:       "Report recipes with duplicate names without changing anything",
 		Example:     "  anylist-pp-cli recipes duplicates --json",
-		Annotations: map[string]string{"pp:endpoint": "recipes.duplicates", "pp:method": "POST", "pp:path": "/data/user-data/get", "mcp:read-only": "true"},
+		Annotations: map[string]string{"pp:endpoint": "recipes.duplicates", "pp:method": "GET", "pp:path": "local-cache", "mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil
