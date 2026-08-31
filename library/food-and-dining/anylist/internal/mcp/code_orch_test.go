@@ -17,8 +17,8 @@ import (
 // /data/user-data/get data-fetch route.
 func codeOrchShapeIsReadOnly(ep *codeOrchEndpoint) bool {
 	if ep.Method == "GET" {
-		// recipes.link is a local-cache command, not a remote endpoint;
-		// generic execute must not send its sentinel path through HTTP.
+		// Local-cache commands are not remote endpoints; generic execute must
+		// not send their sentinel path through HTTP.
 		return ep.Path != "local-cache"
 	}
 	return ep.Method == "POST" && ep.Path == "/data/user-data/get"

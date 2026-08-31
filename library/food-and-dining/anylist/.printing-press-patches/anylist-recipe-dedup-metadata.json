@@ -11,6 +11,7 @@
     "tools-manifest.json",
     "internal/mcp/code_orch.go",
     "internal/mcp/code_orch_recipes.go",
+    "internal/mcp/tools_context.go",
     "internal/cli/recipes_duplicates.go",
     "internal/cli/recipes_duplicates_test.go",
     "internal/cli/recipes_import.go",

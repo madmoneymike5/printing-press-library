@@ -63,11 +63,11 @@ func codeOrchRecipeEndpoints() []codeOrchEndpoint {
 		},
 		{
 			ID:         "recipes.duplicates",
-			Method:     "POST",
-			Path:       "/data/user-data/get",
-			Summary:    "Report duplicate recipe names from the local cache without changing anything",
+			Method:     "GET",
+			Path:       "local-cache",
+			Summary:    "Report duplicate recipe names from the local cache without changing anything; use the CLI command mirror",
 			Positional: []string{},
-			keywords:   codeOrchKeywords("recipes", "duplicates", "Report duplicate recipe names from the local cache without changing anything", "/data/user-data/get"),
+			keywords:   codeOrchKeywords("recipes", "duplicates", "Report duplicate recipe names from the local cache without changing anything; use the CLI command mirror", "local-cache"),
 		},
 		{
 			ID:         "recipes.import-paprika",

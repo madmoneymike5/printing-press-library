@@ -542,13 +542,13 @@ resources:
           item: Recipe
 
       duplicates:
-        method: POST
-        path: /data/user-data/get
+        method: GET
+        path: local-cache
         description: "Report duplicate recipe names from the local cache without changing anything"
         body: []
         response:
           type: array
-          item: Recipe
+          item: RecipeDuplicateGroup
 
       create:
         method: POST
@@ -1145,6 +1145,61 @@ types:
       - name: package_size
         type: string
       - name: category_match_id
+        type: string
+      - name: photo_ids
+        type: array
+        item: string
+      - name: prices
+        type: array
+        item: ItemPrice
+      - name: store_ids
+        type: array
+        item: string
+      - name: category_assignments
+        type: array
+        item: CategoryAssignment
+
+  ItemPrice:
+    fields:
+      - name: amount
+        type: number
+      - name: details
+        type: string
+      - name: store_id
+        type: string
+      - name: date
+        type: string
+
+  CategoryAssignment:
+    fields:
+      - name: id
+        type: string
+      - name: category_group_id
+        type: string
+      - name: category_id
+        type: string
+
+  RecipeDuplicateGroup:
+    fields:
+      - name: name
+        type: string
+      - name: normalized_name
+        type: string
+      - name: count
+        type: integer
+      - name: recipes
+        type: array
+        item: RecipeDuplicateEntry
+
+  RecipeDuplicateEntry:
+    fields:
+      - name: id
+        type: string
+      - name: name
+        type: string
+      - name: source_name
+        type: string
+      - name: source_url
         type: string
 
   Recipe:

@@ -82,7 +82,7 @@ func handleContext(_ context.Context, _ mcplib.CallToolRequest) (*mcplib.CallToo
 			{
 				"name":        "recipes",
 				"description": "Manage recipes — import, organize, add to shopping lists, and manage recipe-sharing links with explicit apply gates and fresh read-back verification",
-				"endpoints":   []string{"add-to-list", "batch-add", "create", "delete", "filter", "import", "import-paprika", "link", "list", "missing", "photo", "scale", "search", "sharing", "show", "update"},
+				"endpoints":   []string{"add-to-list", "batch-add", "create", "delete", "duplicates", "filter", "import", "import-paprika", "link", "list", "missing", "photo", "scale", "search", "sharing", "show", "update"},
 				"searchable":  true,
 			},
 			{

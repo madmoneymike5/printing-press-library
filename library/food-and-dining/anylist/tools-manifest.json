@@ -1357,8 +1357,8 @@
     {
       "name": "recipes_duplicates",
       "description": "Report recipes with duplicate names from the local cache without changing anything. Returns duplicate groups.",
-      "method": "POST",
-      "path": "/data/user-data/get",
+      "method": "GET",
+      "path": "local-cache",
       "params": []
     },
     {
