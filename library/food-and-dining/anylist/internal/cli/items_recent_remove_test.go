@@ -79,6 +79,41 @@ func TestResolveRecentEntry_ChunkSelectorDisambiguates(t *testing.T) {
 	}
 }
 
+func TestVerifyRecentAbsence(t *testing.T) {
+	// A removal that silently failed leaves the ID in several chunks. The
+	// original verification treated resolveRecentEntry's ambiguity error as
+	// absence and would have reported success; absence must be positive.
+	multi := recentStoreFixture(
+		&pb.StarterList{Identifier: "chunk-a", Name: "Recent Items", Items: []*pb.ListItem{{Identifier: "victim", Name: "milk"}}},
+		&pb.StarterList{Identifier: "chunk-b", Name: "Recent Items", Items: []*pb.ListItem{{Identifier: "victim", Name: "milk"}}},
+	)
+	if err := verifyRecentAbsence(multi, "victim", "milk"); err == nil {
+		t.Fatal("ID present in two chunks must fail verification")
+	} else if !strings.Contains(err.Error(), "chunk-a") || !strings.Contains(err.Error(), "chunk-b") {
+		t.Fatalf("error must name the surviving chunks: %v", err)
+	}
+
+	single := recentStoreFixture(
+		&pb.StarterList{Identifier: "chunk-a", Name: "Recent Items", Items: []*pb.ListItem{{Identifier: "victim", Name: "milk"}}},
+	)
+	if err := verifyRecentAbsence(single, "victim", "milk"); err == nil {
+		t.Fatal("ID present in one chunk must fail verification")
+	}
+
+	clean := recentStoreFixture(
+		&pb.StarterList{Identifier: "chunk-a", Name: "Recent Items", Items: []*pb.ListItem{{Identifier: "other", Name: "milk"}}},
+		&pb.StarterList{Identifier: "chunk-b", Name: "Recent Items"},
+	)
+	if err := verifyRecentAbsence(clean, "victim", "milk"); err != nil {
+		t.Fatalf("genuinely absent ID must pass: %v", err)
+	}
+
+	// A read-back without any recent chunks is inconclusive, not verified.
+	if err := verifyRecentAbsence(&pb.PBUserDataResponse{}, "victim", "milk"); err == nil {
+		t.Fatal("read-back with zero chunks must fail verification")
+	}
+}
+
 func TestResolveRecentEntry_EmptySelector(t *testing.T) {
 	data := recentStoreFixture(
 		&pb.StarterList{Identifier: "chunk-a", Name: "Recent Items", Items: []*pb.ListItem{{Identifier: "id-a", Name: "milk"}}},

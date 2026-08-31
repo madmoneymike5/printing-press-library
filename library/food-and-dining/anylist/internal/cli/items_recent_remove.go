@@ -76,6 +76,35 @@ func resolveRecentEntry(data *pb.PBUserDataResponse, itemSelector, chunkSelector
 	return matches[0], matches, nil
 }
 
+// verifyRecentAbsence positively establishes that itemID is absent from every
+// chunk of the read-back. It deliberately does not reuse resolveRecentEntry:
+// that resolver's error path conflates "no match" with "ambiguous match", so
+// an entry still present in several chunks would look like verified absence.
+// A read-back without any recent chunks is likewise inconclusive and fails
+// closed.
+func verifyRecentAbsence(data *pb.PBUserDataResponse, itemID, itemName string) error {
+	chunks := recentChunks(data)
+	if len(chunks) == 0 {
+		return fmt.Errorf("recent remove verification failed: read-back contained no recent-items chunks")
+	}
+	var present []string
+	for _, list := range chunks {
+		if list == nil || list.GetIdentifier() == "" {
+			continue
+		}
+		for _, item := range list.GetItems() {
+			if item != nil && item.GetIdentifier() == itemID {
+				present = append(present, list.GetIdentifier())
+				break
+			}
+		}
+	}
+	if len(present) > 0 {
+		return fmt.Errorf("recent remove verification failed: entry %q (id %s) is still present in chunk(s) %s", itemName, itemID, strings.Join(present, ", "))
+	}
+	return nil
+}
+
 func newItemsRecentRemoveCmd(flags *rootFlags) *cobra.Command {
 	var itemSelector, chunkSelector string
 	var apply bool
@@ -164,9 +193,8 @@ the local cache is updated.`,
 			if err != nil {
 				return fmt.Errorf("verifying removal of recent entry %q: %w", itemName, err)
 			}
-			// Absence must hold across every chunk, not just the written one.
-			if found, _, verr := resolveRecentEntry(verifiedData, itemID, ""); verr == nil {
-				return fmt.Errorf("recent remove verification failed: entry %q (id %s) is still present in chunk %s", itemName, itemID, found.list.GetIdentifier())
+			if err := verifyRecentAbsence(verifiedData, itemID, itemName); err != nil {
+				return err
 			}
 			if err := st.SyncFromUserData(verifiedData); err != nil {
 				return fmt.Errorf("updating local cache after recent remove: %w", err)

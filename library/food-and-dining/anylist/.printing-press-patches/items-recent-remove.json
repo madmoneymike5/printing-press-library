@@ -13,5 +13,5 @@
   "SKILL.md",
   "README.md"
  ],
- "validated_outcome": "Offline unit tests cover all-chunk scan, ambiguity rejection, exact-ID match, chunk disambiguation, and empty-selector rejection. Live dogfood of the preview path against a real account resolved an ambiguous name across two chunks and rejected it with the disambiguation hint, and reported a clean miss for an absent name. A prior throwaway probe already proved the write+read-back round trip against a real recent chunk."
+ "validated_outcome": "Offline unit tests cover all-chunk scan, ambiguity rejection, exact-ID match, chunk disambiguation, and empty-selector rejection, plus fail-closed verification: a read-back where the ID survives in multiple chunks (Greptile P1 on #1892 — the original verification treated the resolver's ambiguity error as absence) and a read-back with zero recent chunks both fail verification instead of reporting success. Live dogfood of the preview path against a real account resolved an ambiguous name across two chunks and rejected it with the disambiguation hint, and reported a clean miss for an absent name. A prior throwaway probe already proved the write+read-back round trip against a real recent chunk."
 }
