@@ -140,7 +140,7 @@ func TestCommand_Fleet_UnlockSend_InvokesTeslaControl(t *testing.T) {
 
 	// Plant a fake key file so resolveFleetKeyPath succeeds.
 	keyFile := filepath.Join(t.TempDir(), "fleet-private.pem")
-	if err := os.WriteFile(keyFile, []byte("-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----\n"), 0o600); err != nil {
+	if err := os.WriteFile(keyFile, []byte("fake-ec-private-key\n"), 0o600); err != nil {
 		t.Fatalf("write key: %v", err)
 	}
 	t.Setenv("TESLA_FLEET_KEY_FILE", keyFile)
@@ -581,7 +581,7 @@ func seedFleetSelfHeal(t *testing.T, flags *rootFlags, expiry time.Time, refresh
 		t.Fatalf("Load cfg: %v", err)
 	}
 	keyFile := filepath.Join(t.TempDir(), "fleet-private.pem")
-	if err := os.WriteFile(keyFile, []byte("-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----\n"), 0o600); err != nil {
+	if err := os.WriteFile(keyFile, []byte("fake-ec-private-key\n"), 0o600); err != nil {
 		t.Fatalf("write key: %v", err)
 	}
 	// clientID + refreshToken populate everything tryRefreshFleetToken needs;
