@@ -1,5 +1,5 @@
 name: Review Stack
-# review-stack-control: current PR gate scans files only; TruffleHog owns history
+# review-stack-control: post-rollout verification against current v1 baseline
 
 on:
   pull_request:
