@@ -1,6 +1,6 @@
 module github.com/mvanhorn/printing-press-library/library/food-and-dining/table-reservation-goat
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/browserutils/kooky v0.2.9
