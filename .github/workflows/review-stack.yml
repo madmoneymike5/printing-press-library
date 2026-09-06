@@ -1,5 +1,5 @@
 name: Review Stack
-# review-stack-control: refresh marker for reusable workflow and action updates
+# review-stack-control: refresh marker for reusable workflow, action, and safe scanner output updates
 
 on:
   pull_request:
