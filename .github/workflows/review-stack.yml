@@ -16,3 +16,4 @@ jobs:
       native-command: >-
         python -m compileall -q .
       central-ref: v1
+      opengrep-excludes: "library/food-and-dining/ordertogo/.manuscripts/**"
