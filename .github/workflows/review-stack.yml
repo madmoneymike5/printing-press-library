@@ -1,0 +1,18 @@
+name: Review Stack
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review-stack:
+    uses: madmoneymike5/review-stack-control/.github/workflows/review-stack.yml@v1
+    with:
+      native-command: >-
+        python -m compileall -q .
+      central-ref: v1
+    secrets: inherit
