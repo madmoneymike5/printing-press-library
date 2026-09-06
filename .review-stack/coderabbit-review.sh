@@ -6,7 +6,7 @@ if command -v cr >/dev/null 2>&1; then
 elif command -v coderabbit >/dev/null 2>&1; then
   cli=coderabbit
 else
-  printf '%s\n' 'CodeRabbit CLI missing. Install: CI=1 curl -fsSL https://cli.coderabbit.ai/install.sh | sh' >&2
+  printf '%s\n' 'CodeRabbit CLI missing. Install it through your organization-approved method, then rerun.' >&2
   exit 127
 fi
 
