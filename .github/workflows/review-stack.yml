@@ -17,4 +17,9 @@ jobs:
         python -m compileall -q .
       central-ref: v1
       opengrep-excludes: "library/food-and-dining/ordertogo/.manuscripts/**"
-      gitleaks-excludes: '(^|/)\.manuscripts/|(^|/)spec\.(json|yaml)$|(^|/)jwtshape_test\.go$|(^|/)testdata/fixtures/|(^|/)browser-sniff-capture\.har$'
+      gitleaks-excludes: |-
+        (^|/)\.manuscripts/
+        (^|/)spec\.(json|yaml)$
+        (^|/)jwtshape_test\.go$
+        (^|/)testdata/fixtures/
+        (^|/)browser-sniff-capture\.har$
