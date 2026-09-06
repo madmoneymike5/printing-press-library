@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   review-stack:
-    uses: madmoneymike5/review-stack-control/.github/workflows/review-stack.yml@v1
+    uses: madmoneymike5/review-stack-runtime/.github/workflows/review-stack.yml@v1
     with:
       native-command: >-
         python -m compileall -q .
