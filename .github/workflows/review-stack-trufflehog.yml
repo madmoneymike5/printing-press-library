@@ -11,4 +11,3 @@ permissions:
 jobs:
   trufflehog:
     uses: madmoneymike5/review-stack-control/.github/workflows/trufflehog.yml@v1
-    secrets: inherit
