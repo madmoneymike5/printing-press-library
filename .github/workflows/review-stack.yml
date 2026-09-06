@@ -1,5 +1,5 @@
 name: Review Stack
-# review-stack-control: post-rollout verification against current v1 baseline
+# review-stack-control: runtime mirror rollout verification
 
 on:
   pull_request:
