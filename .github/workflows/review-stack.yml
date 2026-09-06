@@ -1,5 +1,5 @@
 name: Review Stack
-# review-stack-control: refresh marker for reusable workflow, action, and safe scanner output updates
+# review-stack-control: current PR gate scans files only; TruffleHog owns history
 
 on:
   pull_request:
