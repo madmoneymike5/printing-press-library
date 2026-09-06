@@ -1,6 +1,6 @@
 module github.com/mvanhorn/printing-press-library/library/commerce/facebook-marketplace
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/enetx/surf v1.0.199
@@ -13,7 +13,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/mark3labs/mcp-go v0.47.0
 	github.com/spf13/pflag v1.0.6
-	golang.org/x/text v0.39.0
+	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.50.1
 )
 
@@ -37,9 +37,9 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/wzshiming/socks5 v0.7.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

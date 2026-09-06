@@ -1,0 +1,25 @@
+name: Review Stack
+# review-stack-control: runtime mirror rollout verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review-stack:
+    uses: madmoneymike5/review-stack-runtime/.github/workflows/review-stack.yml@v1
+    with:
+      native-command: >-
+        python -m compileall -q .
+      central-ref: v1
+      opengrep-excludes: "library/food-and-dining/ordertogo/.manuscripts/**"
+      gitleaks-excludes: |-
+        (^|/)\.manuscripts/
+        (^|/)spec\.(json|yaml)$
+        (^|/)jwtshape_test\.go$
+        (^|/)testdata/fixtures/
+        (^|/)browser-sniff-capture\.har$

@@ -1,6 +1,6 @@
 module github.com/mvanhorn/printing-press-library/library/devices/juneoven
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -13,7 +13,7 @@ require modernc.org/sqlite v1.37.0
 require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/mark3labs/mcp-go v0.47.0
-	golang.org/x/crypto v0.54.0
+	golang.org/x/crypto v0.55.0
 )
 
 require (

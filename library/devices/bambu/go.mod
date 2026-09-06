@@ -1,6 +1,6 @@
 module github.com/mvanhorn/printing-press-library/library/devices/bambu
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -30,7 +30,7 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
-	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	modernc.org/libc v1.62.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

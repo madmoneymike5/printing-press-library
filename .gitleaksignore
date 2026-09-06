@@ -1,7 +1,56 @@
-# Synthetic JWT test fixture, not a credential. The token is built at runtime
-# from strings.Repeat("a", 430) + "." + strings.Repeat("b", 344) to exercise
-# LooksLikeJWT size detection; its own comment states "Synthetic — not a
-# credential." It is shipped verbatim by the canonical cli-printing-press
-# framework in every printed CLI (already merged across 9+ library CLIs).
-# gitleaks' generic-api-key rule matches the base64 JWT header — false positive.
-library/developer-tools/framer/internal/cliutil/jwtshape_test.go:generic-api-key:16
+# Reviewed false positives only; each entry is an exact path/rule/line fingerprint.
+# Generated fixture trees are handled by the central path policy; new values still block.
+cli-skills/pp-judge-me/SKILL.md:curl-auth-header:51
+cli-skills/pp-oura/SKILL.md:curl-auth-header:55
+docs/plans/2026-04-30-001-fix-cli-float-pagination-encoding-plan.md:generic-api-key:96
+library/ai/v0/internal/config/config.go:generic-api-key:380
+library/commerce/amazon-seller/internal/cli/novel_store.go:generic-api-key:174
+library/commerce/autotempest/internal/autotempest/token.go:generic-api-key:19
+library/commerce/blacklane/internal/cli/auth.go:generic-api-key:27
+library/commerce/reno-goat/internal/cli/brands_westelm-brands.go:generic-api-key:89
+library/commerce/reno-goat/internal/cli/brands_rejuvenation-brands.go:generic-api-key:89
+library/commerce/reno-goat/internal/cli/product-search_rejuvenation-search.go:generic-api-key:135
+library/commerce/reno-goat/internal/cli/suggest_rejuvenation-suggest.go:generic-api-key:97
+library/commerce/reno-goat/internal/cli/product-search_westelm-search.go:generic-api-key:143
+library/commerce/reno-goat/internal/cli/suggest_westelm-suggest.go:generic-api-key:97
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:algolia-api-key:3012
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:generic-api-key:37
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:generic-api-key:38
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:generic-api-key:40
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:generic-api-key:1520
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:algolia-api-key:3136
+library/commerce/reno-goat/internal/cli/novel_fanout_search.go:generic-api-key:3274
+library/devices/dreo/internal/dreoauth/login.go:generic-api-key:32
+library/devices/juneoven/internal/june/identity.go:generic-api-key:20
+library/devices/tesla/internal/cli/agent_context_test.go:generic-api-key:164
+library/food-and-dining/food52/internal/food52/testdata/recipes-chicken.html:generic-api-key:21
+library/health/oura/SKILL.md:curl-auth-header:50
+library/health/oura/README.md:curl-auth-header:13
+library/health/peloton/internal/cli/peloton_oauth.go:generic-api-key:24
+library/marketing/judge-me/SKILL.md:curl-auth-header:46
+library/marketing/judge-me/README.md:curl-auth-header:9
+library/marketing/placeit/internal/algolia/algolia.go:generic-api-key:38
+library/media-and-entertainment/metacritic/internal/cli/promoted_composer.go:generic-api-key:114
+library/media-and-entertainment/metacritic/internal/cli/finder_browse-titles.go:generic-api-key:97
+library/media-and-entertainment/metacritic/internal/cli/finder_search-titles.go:generic-api-key:93
+library/media-and-entertainment/metacritic/internal/cli/finder_list-filters.go:generic-api-key:106
+library/media-and-entertainment/metacritic/internal/cli/reviews_list-user.go:generic-api-key:108
+library/media-and-entertainment/metacritic/internal/cli/reviews_list-critic.go:generic-api-key:109
+library/media-and-entertainment/skool/internal/cli/auth_test.go:jwt:16
+library/media-and-entertainment/suno/internal/captcha/config.go:generic-api-key:18
+library/media-and-entertainment/youtube/internal/cli/playlist_enrich_test.go:generic-api-key:64
+library/payments/robinhood/internal/cli/agent_context.go:generic-api-key:143
+library/payments/robinhood/internal/cli/doctor.go:generic-api-key:205
+library/payments/robinhood/internal/cli/doctor.go:generic-api-key:207
+library/payments/robinhood/internal/cli/doctor.go:generic-api-key:209
+library/productivity/granola/internal/granola/workos_test.go:generic-api-key:192
+library/productivity/granola/internal/granola/workos_test.go:generic-api-key:237
+library/productivity/granola/internal/granola/workos_test.go:generic-api-key:312
+library/productivity/mobbin/internal/config/supabase.go:generic-api-key:19
+library/project-management/jira/internal/mcp/tools.go:curl-auth-user:2410
+library/travel/airbnb/internal/source/airbnb/graphql.go:generic-api-key:46
+library/travel/airbnb/internal/source/airbnb/graphql_test.go:generic-api-key:98
+library/travel/airbnb/internal/source/airbnb/graphql_test.go:generic-api-key:108
+library/travel/airbnb/internal/source/airbnb/graphql_test.go:generic-api-key:157
+library/travel/ikon/internal/client/client_verify_short_circuit_test.go:generic-api-key:178
+library/travel/visit-detroit-blog/internal/cli/algolia.go:algolia-api-key:26

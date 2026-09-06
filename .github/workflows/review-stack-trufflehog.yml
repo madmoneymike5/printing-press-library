@@ -1,0 +1,13 @@
+name: TruffleHog weekly deep scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    uses: madmoneymike5/review-stack-runtime/.github/workflows/trufflehog.yml@v1

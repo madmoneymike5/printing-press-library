@@ -120,7 +120,7 @@ func scopedHomeWithKey(t *testing.T, vin string) string {
 	}
 	priv := filepath.Join(teslaDir, vin+"-private.pem")
 	pub := filepath.Join(teslaDir, vin+"-public.pem")
-	if err := os.WriteFile(priv, []byte("-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"), 0o600); err != nil {
+	if err := os.WriteFile(priv, []byte("fake-private-key\n"), 0o600); err != nil {
 		t.Fatalf("write priv: %v", err)
 	}
 	if err := os.WriteFile(pub, []byte("-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n"), 0o644); err != nil {
